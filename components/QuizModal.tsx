@@ -8,6 +8,110 @@ import { QuizQuestion, Student } from '../types';
 import { renderLatex, getSafeEnv } from '../utils';
 import ConfirmModal from './ConfirmModal';
 
+// Robust helper to sanitize a list of quiz questions, guaranteeing that options is always a valid string array.
+const sanitizeQuestions = (rawQuestions: any): QuizQuestion[] => {
+  if (!Array.isArray(rawQuestions)) return [];
+  return rawQuestions.map((q: any) => {
+    if (!q) {
+      return {
+        question: '',
+        options: ['', '', '', ''],
+        correctIndex: 0,
+        explanation: ''
+      };
+    }
+    
+    // 1. Ensure options is an array of strings
+    let options: string[] = [];
+    if (Array.isArray(q.options)) {
+      options = q.options.map((opt: any) => opt !== null && opt !== undefined ? String(opt).trim() : '');
+    } else if (q.options && typeof q.options === 'object') {
+      // If options is an object somehow (e.g. {A: '...', B: '...'})
+      options = Object.values(q.options).map((opt: any) => opt !== null && opt !== undefined ? String(opt).trim() : '');
+    }
+    
+    // Default to 4 options if not enough are present
+    if (options.length === 0) {
+      options = ['', '', '', ''];
+    }
+
+    const explanationText = typeof q.explanation === 'string' ? q.explanation : '';
+
+    // 2. Normalize correctIndex
+    let correctIndex = -1;
+    const rawVal = q.correctIndex;
+
+    if (rawVal !== null && rawVal !== undefined) {
+      if (typeof rawVal === 'number') {
+        correctIndex = rawVal;
+      } else {
+        const valStr = String(rawVal).trim();
+        // Check if rawVal is exactly matching one of the option texts (case insensitive)
+        const optMatchIdx = options.findIndex(opt => opt.toLowerCase() === valStr.toLowerCase());
+        if (optMatchIdx !== -1) {
+          correctIndex = optMatchIdx;
+        } else {
+          const parsed = parseInt(valStr, 10);
+          if (!isNaN(parsed)) {
+            correctIndex = parsed;
+          } else {
+            // Check for 'A', 'B', 'C', 'D'
+            const charCode = valStr.toUpperCase().charCodeAt(0);
+            if (charCode >= 65 && charCode <= 68) {
+              correctIndex = charCode - 65;
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Smart parsing from the 'explanation' text.
+    // Dynamic explanations written by AI usually indicate the correct answer clearly.
+    // e.g., "Chọn đáp án A", "Phương án đúng là C", "Đáp án đúng: B", "Chọn D", "Do đó chọn B".
+    let explanationChoice = -1;
+    if (explanationText) {
+      const patterns = [
+        /(?:chọn|đáp án|phương án|lựa chọn|đúng là|kết quả là|đáp số)\s+([A-D])\b/i,
+        /\b([A-D])\s+(?:là\s+)?(?:đáp án|phương án|lựa chọn)\s+(?:đúng|chính xác)\b/i,
+        /(?:đáp án|phương án|chọn)\s*:\s*([A-D])\b/i,
+        /\bphương án đúng\s+(?:là\s+)?([A-D])\b/i,
+        /\bvậy\s+(?:ta\s+)?(?:chọn|đáp án)\s+([A-D])\b/i
+      ];
+
+      for (const pattern of patterns) {
+        const match = explanationText.match(pattern);
+        if (match && match[1]) {
+          explanationChoice = match[1].toUpperCase().charCodeAt(0) - 65;
+          break;
+        }
+      }
+    }
+
+    // If an explicit choice is found in explanations, prioritize it (since AI's explanations are usually correct)
+    if (explanationChoice >= 0 && explanationChoice < options.length) {
+      correctIndex = explanationChoice;
+    } else {
+      // Sửa lỗi 1-based index (A=1, B=2, C=3, D=4)
+      // Nếu correctIndex có giá trị bằng độ dài (ví dụ: gán bằng 4 với mảng 4 phần tử) thì chắc chắn là 1-based
+      if (correctIndex === options.length) {
+        correctIndex = options.length - 1; // 4 -> 3
+      }
+    }
+
+    // Ensure within valid bounds
+    if (correctIndex < 0 || correctIndex >= options.length) {
+      correctIndex = 0;
+    }
+
+    return {
+      question: typeof q.question === 'string' ? q.question : (q.title || ''),
+      options,
+      correctIndex,
+      explanation: explanationText
+    };
+  });
+};
+
 interface QuizModalProps {
   nodeId: string;
   lessonTitle: string;
@@ -36,6 +140,7 @@ const QuizModal: React.FC<QuizModalProps> = ({ nodeId, lessonTitle, lessonUrl, i
   const [userAnswers, setUserAnswers] = useState<(number | null)[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [isAiMode, setIsAiMode] = useState(false);
+  const [resolvedDbId, setResolvedDbId] = useState<number | null>(null);
   
   // State quản lý API Key riêng của môn/grade hiện tại
   const [modalApiKey, setModalApiKey] = useState(() => {
@@ -57,23 +162,24 @@ const QuizModal: React.FC<QuizModalProps> = ({ nodeId, lessonTitle, lessonUrl, i
 
   // Helper chuẩn hóa chỉ số đáp án đúng (hỗ trợ cả Number, String, "A","B","C","D" hay Option Text)
   const getNormalizedIndex = (correctVal: any, options: string[]): number => {
+    const opts = Array.isArray(options) ? options : [];
     if (correctVal === null || correctVal === undefined) return 0;
-    if (typeof correctVal === 'number' && correctVal >= 0 && correctVal < options.length) {
+    if (typeof correctVal === 'number' && correctVal >= 0 && correctVal < opts.length) {
       return correctVal;
     }
     const valStr = String(correctVal).trim();
     const parsedNum = parseInt(valStr, 10);
-    if (!isNaN(parsedNum) && parsedNum >= 0 && parsedNum < options.length) {
+    if (!isNaN(parsedNum) && parsedNum >= 0 && parsedNum < opts.length) {
       return parsedNum;
     }
     if (valStr.length === 1) {
       const charCode = valStr.toUpperCase().charCodeAt(0);
-      if (charCode >= 65 && charCode <= 65 + options.length - 1) {
+      if (charCode >= 65 && charCode <= 65 + opts.length - 1) {
         return charCode - 65;
       }
     }
     const lowercaseVal = valStr.toLowerCase();
-    const matchedIdx = options.findIndex(opt => String(opt).trim().toLowerCase() === lowercaseVal);
+    const matchedIdx = opts.findIndex(opt => String(opt).trim().toLowerCase() === lowercaseVal);
     if (matchedIdx !== -1) {
       return matchedIdx;
     }
@@ -83,7 +189,8 @@ const QuizModal: React.FC<QuizModalProps> = ({ nodeId, lessonTitle, lessonUrl, i
   // Helper so khớp đáp án đã chọn với đáp án đúng
   const checkIsCorrect = (userAns: number | null, correctVal: any, options: string[]): boolean => {
     if (userAns === null || userAns === undefined) return false;
-    const normalizedCorrect = getNormalizedIndex(correctVal, options);
+    const opts = Array.isArray(options) ? options : [];
+    const normalizedCorrect = getNormalizedIndex(correctVal, opts);
     return userAns === normalizedCorrect;
   };
 
@@ -110,6 +217,45 @@ const QuizModal: React.FC<QuizModalProps> = ({ nodeId, lessonTitle, lessonUrl, i
     }
   };
 
+  const getPossibleDbIds = () => {
+    const ids: number[] = [];
+    const directId = getDbId();
+    ids.push(directId);
+
+    // Xử lý tiền tố và phần số
+    const numericPart = nodeId.replace(/\D/g, '');
+    const baseId = parseInt(numericPart || "0");
+    if (!isNaN(baseId) && baseId > 0) {
+      ids.push(baseId);
+      if (selectedGrade && selectedGrade <= 12) {
+        ids.push((selectedGrade * 100000000000000) + baseId);
+      }
+      ids.push((10 * 100000000000000) + baseId);
+      ids.push((11 * 100000000000000) + baseId);
+      ids.push((12 * 100000000000000) + baseId);
+      ids.push((1 * 100000000000000) + baseId);
+    }
+
+    // Nếu ID có dấu gạch ngang (timestamp sau dấu gạch)
+    if (typeof nodeId === 'string' && nodeId.includes('-')) {
+      const parts = nodeId.split('-');
+      const lastPart = parts[parts.length - 1];
+      const timestamp = parseInt(lastPart);
+      if (!isNaN(timestamp) && timestamp > 0) {
+        ids.push(timestamp);
+        if (selectedGrade && selectedGrade <= 12) {
+          ids.push((selectedGrade * 100000000000000) + timestamp);
+        }
+        ids.push((10 * 100000000000000) + timestamp);
+        ids.push((11 * 100000000000000) + timestamp);
+        ids.push((12 * 100000000000000) + timestamp);
+        ids.push((1 * 100000000000000) + timestamp);
+      }
+    }
+
+    return Array.from(new Set(ids.filter(id => id > 0)));
+  };
+
   const pickRandomQuestions = (bank: QuizQuestion[], count: number = 5) => {
     if (bank.length <= count) return [...bank];
     const shuffled = [...bank].sort(() => 0.5 - Math.random());
@@ -120,23 +266,47 @@ const QuizModal: React.FC<QuizModalProps> = ({ nodeId, lessonTitle, lessonUrl, i
     setLoading(true);
     setErrorInfo(null);
     try {
-      const { data, error } = await supabase.from('quiz_data').select('data').eq('id', getDbId()).maybeSingle();
+      const candidateIds = getPossibleDbIds();
+      const { data: records, error } = await supabase.from('quiz_data').select('id, data').in('id', candidateIds);
       if (error) {
         console.error("Lỗi khi tải Quiz từ Database:", error);
       }
-      if (data?.data && Array.isArray(data.data)) {
-        const bank = data.data;
-        setFullBank(bank);
-        const displaySet = isAdmin ? bank : pickRandomQuestions(bank, 5);
-        setQuestions(displaySet);
-        setUserAnswers(new Array(displaySet.length).fill(null));
-        setIsAiMode(false);
-      } else {
-        setQuestions([]);
-        setFullBank([]);
-        if (!isAdmin) {
-          setErrorInfo({ title: "Chưa có bài tập", msg: "Giáo viên chưa soạn bài tập cho mục này." });
+      
+      if (records && records.length > 0) {
+        let bestMatch = records[0];
+        const currentPrefixStr = selectedGrade ? String(selectedGrade) : '';
+        const exactCurrentDbId = getDbId();
+        
+        const matchedExact = records.find(r => r.id === exactCurrentDbId);
+        if (matchedExact) {
+          bestMatch = matchedExact;
+        } else if (currentPrefixStr) {
+          const matchedPrefix = records.find(r => String(r.id).startsWith(currentPrefixStr));
+          if (matchedPrefix) {
+            bestMatch = matchedPrefix;
+          }
         }
+        
+        setResolvedDbId(bestMatch.id);
+        
+        if (bestMatch.data && Array.isArray(bestMatch.data)) {
+          const bank = sanitizeQuestions(bestMatch.data);
+          setFullBank(bank);
+          const displaySet = isAdmin ? bank : pickRandomQuestions(bank, 5);
+          setQuestions(displaySet);
+          setUserAnswers(new Array(displaySet.length).fill(null));
+          setIsAiMode(false);
+          setLoading(false);
+          return;
+        }
+      }
+      
+      // Nếu không tìm thấy quiz nào trong toàn bộ candidateIds
+      setResolvedDbId(getDbId()); // Gán ID mặc định theo tiêu chuẩn hiện tại
+      setQuestions([]);
+      setFullBank([]);
+      if (!isAdmin) {
+        setErrorInfo({ title: "Chưa có bài tập", msg: "Giáo viên chưa soạn bài tập cho mục này." });
       }
     } catch (e) { 
       console.error("Exception in fetchFromDB:", e); 
@@ -171,6 +341,10 @@ const QuizModal: React.FC<QuizModalProps> = ({ nodeId, lessonTitle, lessonUrl, i
       
       let prompt = `Bạn là một giáo viên chuyên nghiệp môn ${resolvedSubject}. Hãy tạo 10 câu hỏi trắc nghiệm khách quan về bài học/chủ đề: "${lessonTitle}". 
       Phân bổ mức độ câu hỏi hợp lý: 4 câu Nhận biết (Biết), 3 câu Thông hiểu (Hiểu), 3 câu Vận dụng. 
+      Lưu ý bắt buộc về tính nhất quán của đáp án đúng:
+      1. Trường "options" chứa 4 đáp án trắc nghiệm dạng văn bản.
+      2. Trường "correctIndex" PHẢI là chỉ số index 0-based (từ 0 đến 3) tương ứng với vị trí đáp án đúng trong mảng "options". Có nghĩa là: 0 = đáp án thứ nhất, 1 = đáp án thứ hai, 2 = đáp án thứ ba, 3 = đáp án thứ tư. Tuyệt đối không được dùng số 1-based (1, 2, 3, 4) hay các ký tự A, B, C, D cho trường "correctIndex".
+      3. Ở cuối phần giải thích chi tiết trong trường "explanation", bạn phải luôn ghi rõ một câu kết luận có dạng "Chọn đáp án [A|B|C|D]." (ví dụ: "Chọn đáp án B." hoặc "Do vậy, phương án đúng là C.") để người dùng dễ theo dõi và đối chiếu.
       Sử dụng ký tự $...$ cho các công thức Toán/Lý/Hóa học (LaTeX) nếu môn học có công thức. Xuất dưới dạng JSON array.`;
 
       const tools: any[] = [];
@@ -180,6 +354,10 @@ const QuizModal: React.FC<QuizModalProps> = ({ nodeId, lessonTitle, lessonUrl, i
         Dựa trên nội dung tài liệu đó, với vai trò là giáo viên môn ${resolvedSubject}, hãy soạn thảo 10 câu hỏi trắc nghiệm khách quan. 
         Nếu không truy cập được link hoặc nội dung không phù hợp, hãy soạn dựa trên tên bài học/chủ đề chính: "${lessonTitle}".
         Phân bổ mức độ câu hỏi hợp lý: 4 câu Nhận biết (Biết), 3 câu Thông hiểu (Hiểu), 3 câu Vận dụng (Tỉ lệ 40% - 30% - 30%). 
+        Lưu ý bắt buộc về tính nhất quán của đáp án đúng:
+        1. Trường "options" chứa 4 đáp án trắc nghiệm dạng văn bản.
+        2. Trường "correctIndex" PHẢI là chỉ số index 0-based (từ 0 đến 3) tương ứng với vị trí đáp án đúng trong mảng "options". Có nghĩa là: 0 = đáp án thứ nhất, 1 = đáp án thứ hai, 2 = đáp án thứ ba, 3 = đáp án thứ tư. Tuyệt đối không được dùng số 1-based (1, 2, 3, 4) hay các ký tự A, B, C, D cho trường "correctIndex".
+        3. Ở cuối phần giải thích chi tiết trong trường "explanation", bạn phải luôn ghi rõ một câu kết luận có dạng "Chọn đáp án [A|B|C|D]." (ví dụ: "Chọn đáp án B." hoặc "Do vậy, phương án đúng là C.") để người dùng dễ theo dõi và đối chiếu.
         Sử dụng ký tự $...$ cho các công thức LaTeX nếu cần thiết. Xuất kết quả dưới dạng JSON array.`;
       }
 
@@ -204,7 +382,8 @@ const QuizModal: React.FC<QuizModalProps> = ({ nodeId, lessonTitle, lessonUrl, i
           }
         }
       });
-      const qData = JSON.parse(response.text || "[]");
+      const qDataRaw = JSON.parse(response.text || "[]");
+      const qData = sanitizeQuestions(qDataRaw);
       setQuestions(qData);
       setUserAnswers(new Array(qData.length).fill(null));
       setIsAiMode(true);
@@ -219,10 +398,13 @@ const QuizModal: React.FC<QuizModalProps> = ({ nodeId, lessonTitle, lessonUrl, i
           const resolvedSubject = subjectName || `Vật lý ${gradeLabel}`;
           const response = await ai.models.generateContent({
             model: 'gemini-3.5-flash',
-            contents: `Bạn là giáo viên môn ${resolvedSubject}. Hãy tạo 10 câu trắc nghiệm cho bài/chủ đề: "${lessonTitle}". Phân bổ 4 Biết, 3 Hiểu, 3 Vận dụng. Xuất JSON array.`,
+            contents: `Bạn là giáo viên môn ${resolvedSubject}. Hãy tạo 10 câu trắc nghiệm cho bài/chủ đề: "${lessonTitle}". Phân bổ 4 Biết, 3 Hiểu, 3 Vận dụng. 
+            Mỗi câu hỏi phải có mảng "options" chứa đúng 4 phần tử. Trường "correctIndex" PHẢI là chỉ số index dạng 0-based từ 0 đến 3 (0 = phương án đầu tiên, 1 = phương án thứ hai, v.v.). Tuyệt đối không dùng 1-based index (1-4) hay chữ cái A-D.
+            Ở câu cuối của phần giải thích "explanation", hãy viết rõ dòng kết luận: "Chọn đáp án [A|B|C|D]." Xuất JSON array.`,
             config: { responseMimeType: "application/json" }
           });
-          const qData = JSON.parse(response.text || "[]");
+          const qDataRaw = JSON.parse(response.text || "[]");
+          const qData = sanitizeQuestions(qDataRaw);
           setQuestions(qData);
           setUserAnswers(new Array(qData.length).fill(null));
           setIsAiMode(true);
@@ -236,29 +418,30 @@ const QuizModal: React.FC<QuizModalProps> = ({ nodeId, lessonTitle, lessonUrl, i
   };
 
   const saveToDB = async (customData?: QuizQuestion[]) => {
-    const dataToSave = customData || questions;
+    const dataToSave = sanitizeQuestions(customData || questions);
     if (dataToSave.length === 0) return;
     setSaving(true);
     setSaveStatus(null);
+    const targetDbId = resolvedDbId || getDbId();
     try {
-      const { data: current, error: fetchError } = await supabase.from('quiz_data').select('data').eq('id', getDbId()).maybeSingle();
+      const { data: current, error: fetchError } = await supabase.from('quiz_data').select('data').eq('id', targetDbId).maybeSingle();
       if (fetchError) {
         console.error("Lỗi khi đọc quiz_data cũ:", fetchError);
         throw new Error("Không thể kiểm tra dữ liệu cũ: " + fetchError.message);
       }
       
-      let updatedBank: QuizQuestion[] = (current?.data && Array.isArray(current.data)) ? current.data : [];
+      let updatedBank: QuizQuestion[] = (current?.data && Array.isArray(current.data)) ? sanitizeQuestions(current.data) : [];
       
       if (customData) {
         // Trường hợp cập nhật từ form sửa/thêm thủ công (đã xử lý logic mảng ở ngoài)
-        updatedBank = customData;
+        updatedBank = sanitizeQuestions(customData);
       } else {
         // Trường hợp lưu từ AI Draft (cộng dồn)
         const newQuestions = dataToSave.filter(q => !updatedBank.some(ex => ex.question === q.question));
         updatedBank = [...updatedBank, ...newQuestions];
       }
 
-      const { error: upsertError } = await supabase.from('quiz_data').upsert({ id: getDbId(), data: updatedBank });
+      const { error: upsertError } = await supabase.from('quiz_data').upsert({ id: targetDbId, data: updatedBank });
       if (upsertError) {
         console.error("Lỗi upsert quiz_data:", upsertError);
         throw new Error(upsertError.message + " | Code: " + upsertError.code);
@@ -318,7 +501,8 @@ const QuizModal: React.FC<QuizModalProps> = ({ nodeId, lessonTitle, lessonUrl, i
     } else if (editingIndex !== null) {
       newBank[editingIndex] = editForm;
     }
-    saveToDB(newBank);
+    const sanitizedBank = sanitizeQuestions(newBank);
+    saveToDB(sanitizedBank);
     setEditingIndex(null);
     setEditForm(null);
   };
@@ -331,8 +515,9 @@ const QuizModal: React.FC<QuizModalProps> = ({ nodeId, lessonTitle, lessonUrl, i
       onConfirm: async () => {
         setSaving(true);
         setSaveStatus(null);
+        const targetDbId = resolvedDbId || getDbId();
         try {
-          const { error } = await supabase.from('quiz_data').delete().eq('id', getDbId());
+          const { error } = await supabase.from('quiz_data').delete().eq('id', targetDbId);
           if (error) throw error;
           setQuestions([]); 
           setFullBank([]); 
