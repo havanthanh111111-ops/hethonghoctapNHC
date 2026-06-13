@@ -270,8 +270,8 @@ const App: React.FC = () => {
       <Routes>
         <Route path="/" element={<LandingPage visitorCount={visitorCount} onSelectGrade={handleSelectGrade} selectedGrade={selectedGrade} subjects={subjects} />} />
         <Route path="/super" element={<SuperProtectedRoute><SuperAdminView subjects={subjects} onSaveSubjects={handleSaveSubjects} visitorCount={visitorCount} /></SuperProtectedRoute>} />
-        <Route path="/teacher" element={<ProtectedRoute><MainView isAdmin={true} data={data} updateData={updateData} isSyncing={isSyncing} visitorCount={visitorCount} selectedGrade={selectedGrade} syncError={syncError} fetchCloudData={fetchCloudData} student={null} subjects={subjects} /></ProtectedRoute>} />
-        <Route path="/student" element={student ? <MainView isAdmin={false} data={data} updateData={updateData} isSyncing={isSyncing} visitorCount={visitorCount} selectedGrade={selectedGrade} syncError={syncError} fetchCloudData={fetchCloudData} student={student} onLogout={() => { setStudent(null); localStorage.removeItem('student_auth_id'); }} subjects={subjects} /> : <StudentLogin onLogin={setStudent} gradeId={selectedGrade || 11} themeColor={subjects.find(s => s.id === selectedGrade)?.theme || 'indigo'} />} />
+        <Route path="/teacher" element={<ProtectedRoute><MainView isAdmin={true} data={data} updateData={updateData} isSyncing={isSyncing} visitorCount={visitorCount} selectedGrade={selectedGrade} syncError={syncError} fetchCloudData={fetchCloudData} student={null} subjects={subjects} onSaveSubjects={handleSaveSubjects} /></ProtectedRoute>} />
+        <Route path="/student" element={student ? <MainView isAdmin={false} data={data} updateData={updateData} isSyncing={isSyncing} visitorCount={visitorCount} selectedGrade={selectedGrade} syncError={syncError} fetchCloudData={fetchCloudData} student={student} onLogout={() => { setStudent(null); localStorage.removeItem('student_auth_id'); }} subjects={subjects} onSaveSubjects={handleSaveSubjects} /> : <StudentLogin onLogin={setStudent} gradeId={selectedGrade || 11} themeColor={subjects.find(s => s.id === selectedGrade)?.theme || 'indigo'} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ErrorBoundary>
@@ -542,7 +542,8 @@ const MainView: React.FC<{
   student: Student | null;
   onLogout?: () => void;
   subjects: Subject[];
-}> = ({ isAdmin, data, updateData, isSyncing, visitorCount, selectedGrade, syncError, fetchCloudData, student, onLogout, subjects }) => {
+  onSaveSubjects?: (updated: Subject[]) => void;
+}> = ({ isAdmin, data, updateData, isSyncing, visitorCount, selectedGrade, syncError, fetchCloudData, student, onLogout, subjects, onSaveSubjects }) => {
   const [selectedId, setSelectedId] = useState<string | null>(() => {
     return localStorage.getItem(`selected_id_${selectedGrade}`);
   });
@@ -861,15 +862,21 @@ const MainView: React.FC<{
   };
   
   const [showHomeConfig, setShowHomeConfig] = useState(false);
-  const [tempHomeUrl, setTempHomeUrl] = useState(data.homeUrl || '');
+  const [tempHomeUrl, setTempHomeUrl] = useState(data?.homeUrl || '');
   const [tempApiKey, setTempApiKey] = useState('');
+  const [tempSubjectPassword, setTempSubjectPassword] = useState('');
+
+  const currentSubjectObj = useMemo(() => {
+    return subjects.find(s => s.id === selectedGrade);
+  }, [subjects, selectedGrade]);
 
   useEffect(() => {
     if (showHomeConfig) {
-      setTempHomeUrl(data.homeUrl || '');
+      setTempHomeUrl(data?.homeUrl || '');
       setTempApiKey(localStorage.getItem(`gemini_api_key_grade_${selectedGrade}`) || '');
+      setTempSubjectPassword(currentSubjectObj?.password || '123');
     }
-  }, [showHomeConfig, selectedGrade, data.homeUrl]);
+  }, [showHomeConfig, selectedGrade, data?.homeUrl, currentSubjectObj]);
 
   useEffect(() => { setActiveTab('content'); }, [selectedId]);
 
@@ -992,6 +999,13 @@ const MainView: React.FC<{
     } else {
       localStorage.removeItem(`gemini_api_key_grade_${selectedGrade}`);
     }
+    
+    // Save updated subject PIN back to Supabase config (id 999)
+    if (selectedGrade && selectedGrade !== 999) {
+      const updatedSubjects = subjects.map(s => s.id === selectedGrade ? { ...s, password: tempSubjectPassword } : s);
+      if (onSaveSubjects) onSaveSubjects(updatedSubjects);
+    }
+
     setShowHomeConfig(false);
   };
 
@@ -999,7 +1013,7 @@ const MainView: React.FC<{
     setSelectedId(id);
     if (id) {
       localStorage.setItem(`selected_id_${selectedGrade}`, id);
-      if (data.nodes.find(n => n.id === id)?.url) setIframeLoading(true);
+      if ((data?.nodes || []).find(n => n.id === id)?.url) setIframeLoading(true);
     } else {
       localStorage.removeItem(`selected_id_${selectedGrade}`);
     }
@@ -1012,7 +1026,7 @@ const MainView: React.FC<{
       {/* If layout2 or layout3, render Top Horizontal Navbar */}
       {activeLayout !== 'layout1' && (
         <TopHorizontalNavbar
-          nodes={data.nodes}
+          nodes={data?.nodes || []}
           selectedId={selectedId}
           themeColor={themeColor}
           isAdmin={isAdmin}
@@ -1085,13 +1099,13 @@ const MainView: React.FC<{
 
         <div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-[#fbfcfd]">
           {filteredRootNodes.map(node=>(
-            <TreeItem key={node.id} node={node} allNodes={data.nodes} selectedId={selectedId} isAdmin={isAdmin} level={0}
+            <TreeItem key={node.id} node={node} allNodes={data?.nodes || []} selectedId={selectedId} isAdmin={isAdmin} level={0}
               visibleNodeIds={visibleNodeIds}
               searchTerm={searchTerm}
               themeColor={themeColor}
               onSelect={handleSelectNode}
               onAdd={(p,t)=>{
-                const nextOrder = data.nodes.filter(n => n.parentId === p).length;
+                const nextOrder = (data?.nodes || []).filter(n => n.parentId === p).length;
                 setNodeModalData({parentId:p, type:t, title:'', url:'', imageUrl: '', order: nextOrder}); 
                 setShowNodeModal(true);
               }}
@@ -1130,7 +1144,7 @@ const MainView: React.FC<{
           isAdmin={isAdmin} 
           selectedId={selectedId} 
           lessonResources={selectedNode?.lessonResources||[]} 
-          globalResources={data.globalResources}
+          globalResources={data?.globalResources || []}
           themeColor={themeColor}
           className="border-r border-slate-100 animate-in slide-in-from-left duration-300"
           onAdd={(isG)=> {setResModalData({title:'', url:'', isGlobal: isG}); setShowResModal(true);}}
@@ -1270,7 +1284,7 @@ const MainView: React.FC<{
           isAdmin={isAdmin} 
           selectedId={selectedId} 
           lessonResources={selectedNode?.lessonResources||[]} 
-          globalResources={data.globalResources}
+          globalResources={data?.globalResources || []}
           themeColor={themeColor}
           className="border-l border-slate-100 animate-in slide-in-from-right duration-300"
           onAdd={(isG)=> {setResModalData({title:'', url:'', isGlobal: isG}); setShowResModal(true);}}
@@ -1340,6 +1354,19 @@ const MainView: React.FC<{
                     <input type="file" className="hidden" accept=".json" onChange={importData} disabled={isImporting} />
                   </label>
                   <p className="text-[8px] text-red-400 font-bold px-1 uppercase tracking-tight">* Khôi phục sẽ ghi đè dữ liệu dự án mới.</p>
+                </div>
+
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pt-2 border-t border-slate-100 mt-2">Mã PIN Giáo viên & Học sinh</h4>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest">Mã PIN Môn học</label>
+                  <input 
+                    type="text" 
+                    value={tempSubjectPassword} 
+                    onChange={e=>setTempSubjectPassword(e.target.value)} 
+                    className="w-full px-4 py-3 text-sm font-medium outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-amber-400 transition-all font-mono" 
+                    placeholder="Mật khẩu môn học..."
+                  />
+                  <p className="text-[8px] text-slate-400 px-1 leading-normal">Thay đổi mã PIN dùng để truy cập Dashboard Giáo viên của riêng bộ môn/khối lớp này.</p>
                 </div>
               </div>
             </div>
