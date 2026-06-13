@@ -67,10 +67,21 @@ class ErrorBoundary extends React.Component<any, any> {
 const TEACHER_PWD = getSafeEnv('TEACHER_PASSWORD') || '123';
 const SUPER_ADMIN_PWD = getSafeEnv('SUPER_ADMIN_PASSWORD') || 'super123';
 
+const BACKGROUND_PRESETS_LIST = [
+  { label: 'Lưới Điện tử phát sáng (Cyber Grid)', value: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Quang phổ Cơ lượng tử (Quantum Light)', value: 'https://images.unsplash.com/photo-1507608869274-d3177c8bb4c7?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Sương mù Vũ trụ & Tinh vân (Cosmic Nebula)', value: 'https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Nguyên tử & Vũ trụ học (Cosmos Physics)', value: 'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Nghệ thuật trừu tượng lướt nước (Abstract Satin)', value: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Phòng Lab thông tin & Trí tuệ AI (AI Circuits)', value: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Học tập & Giá sách học giả (Sleek Bookshelf)', value: 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Cực quang huyền biến (Mystic Aurora)', value: 'https://images.unsplash.com/photo-1531315630201-bb15abeb1653?auto=format&fit=crop&w=2000&q=80' }
+];
+
 const DEFAULT_SUBJECTS: Subject[] = [
-  { id: 10, label: 'Vật Lý 10', color: 'bg-emerald-600', shadow: 'shadow-emerald-100', theme: 'emerald', password: '123' },
-  { id: 11, label: 'Vật Lý 11', color: 'bg-indigo-600', shadow: 'shadow-indigo-100', theme: 'indigo', password: '123' },
-  { id: 12, label: 'Vật Lý 12', color: 'bg-rose-600', shadow: 'shadow-rose-100', theme: 'rose', password: '123' },
+  { id: 10, label: 'Vật Lý 10', color: 'bg-emerald-600', shadow: 'shadow-emerald-100', theme: 'emerald', password: '123', bgUrl: 'https://images.unsplash.com/photo-1507608869274-d3177c8bb4c7?auto=format&fit=crop&w=2000&q=80' },
+  { id: 11, label: 'Vật Lý 11', color: 'bg-indigo-600', shadow: 'shadow-indigo-100', theme: 'indigo', password: '123', bgUrl: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=2000&q=80' },
+  { id: 12, label: 'Vật Lý 12', color: 'bg-rose-600', shadow: 'shadow-rose-100', theme: 'rose', password: '123', bgUrl: 'https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?auto=format&fit=crop&w=2000&q=80' },
 ];
 
 const App: React.FC = () => {
@@ -343,6 +354,16 @@ const LandingPage: React.FC<{ visitorCount: number, onSelectGrade: (g: number) =
   const currentSubject = subjects.find(s => s.id === selectedGrade);
   const themeColor = currentSubject?.theme || 'indigo';
 
+  const currentBgUrl = useMemo(() => {
+    if (selectedGrade === 999) return "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=2000&q=80";
+    if (currentSubject?.bgUrl) return currentSubject.bgUrl;
+    if (activeSubjectGroup) {
+      const groupSub = groupedSubjects[activeSubjectGroup]?.[0];
+      if (groupSub?.bgUrl) return groupSub.bgUrl;
+    }
+    return "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=2000&q=80";
+  }, [selectedGrade, currentSubject, activeSubjectGroup, groupedSubjects]);
+
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedGrade === 999) {
@@ -386,7 +407,18 @@ const LandingPage: React.FC<{ visitorCount: number, onSelectGrade: (g: number) =
   };
 
   return (
-    <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50 overflow-hidden relative text-center px-4">
+    <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-900 overflow-hidden relative text-center px-4">
+      {/* Dynamic Background Image with smooth transition - fully visible & vibrant */}
+      <div 
+        className="absolute inset-0 bg-cover bg-center transition-all duration-1000 ease-in-out scale-100 opacity-80 pointer-events-none"
+        style={{ backgroundImage: `url(${currentBgUrl})` }}
+      />
+      {/* Subtle modern dark overlay to ensure excellent white cards and text contrast */}
+      <div className="absolute inset-0 bg-gradient-to-b from-slate-900/30 via-slate-950/20 to-slate-950/40 pointer-events-none" />
+      
+      {/* Subtle modern mathematical/technological grid overlay */}
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff02_1px,transparent_1px),linear-gradient(to_bottom,#ffffff03_1px,transparent_1px)] bg-[size:4rem_4rem] pointer-events-none" />
+
       {selectedGrade && (
         <button 
           onClick={() => {
@@ -425,10 +457,10 @@ const LandingPage: React.FC<{ visitorCount: number, onSelectGrade: (g: number) =
       )}
 
       <div className="relative z-10 flex flex-col items-center w-full max-w-4xl">
-        <div className="mb-8 p-5 bg-white border border-slate-200 shadow-sm rounded-3xl">
+        <div className="mb-8 p-5 bg-white/95 border border-white/50 backdrop-blur-md shadow-lg rounded-3xl">
             <Book size={48} className={selectedGrade ? (selectedGrade === 999 ? 'text-amber-500 animate-bounce' : `text-${themeColor}-600`) : (activeSubjectGroup ? `text-${getGroupTheme(groupedSubjects[activeSubjectGroup])}-600` : 'text-slate-400')}/>
         </div>
-        <h1 className="text-2xl md:text-5xl font-black text-slate-900 uppercase mb-12 tracking-tighter">
+        <h1 className="text-2xl md:text-5xl font-black text-white uppercase mb-12 tracking-tighter drop-shadow-md">
           {selectedGrade === 999 
             ? 'QUẢN TRỊ VIÊN TỐI CAO' 
             : selectedGrade 
@@ -876,6 +908,7 @@ const MainView: React.FC<{
   const [tempHomeUrl, setTempHomeUrl] = useState(data?.homeUrl || '');
   const [tempApiKey, setTempApiKey] = useState('');
   const [tempSubjectPassword, setTempSubjectPassword] = useState('');
+  const [tempBgUrl, setTempBgUrl] = useState('');
 
   const currentSubjectObj = useMemo(() => {
     return subjects.find(s => s.id === selectedGrade);
@@ -886,6 +919,7 @@ const MainView: React.FC<{
       setTempHomeUrl(data?.homeUrl || '');
       setTempApiKey(localStorage.getItem(`gemini_api_key_grade_${selectedGrade}`) || '');
       setTempSubjectPassword(currentSubjectObj?.password || '123');
+      setTempBgUrl(currentSubjectObj?.bgUrl || '');
     }
   }, [showHomeConfig, selectedGrade, data?.homeUrl, currentSubjectObj]);
 
@@ -1011,9 +1045,9 @@ const MainView: React.FC<{
       localStorage.removeItem(`gemini_api_key_grade_${selectedGrade}`);
     }
     
-    // Save updated subject PIN back to Supabase config (id 999)
+    // Save updated subject PIN and bgUrl back to Supabase config (id 999)
     if (selectedGrade && selectedGrade !== 999) {
-      const updatedSubjects = subjects.map(s => s.id === selectedGrade ? { ...s, password: tempSubjectPassword } : s);
+      const updatedSubjects = subjects.map(s => s.id === selectedGrade ? { ...s, password: tempSubjectPassword, bgUrl: tempBgUrl.trim() } : s);
       if (onSaveSubjects) onSaveSubjects(updatedSubjects);
     }
 
@@ -1329,6 +1363,30 @@ const MainView: React.FC<{
                 <div className="space-y-1">
                   <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest">Link trang chủ (URL)</label>
                   <input value={tempHomeUrl} onChange={e=>setTempHomeUrl(e.target.value)} className="w-full px-4 py-3 text-sm font-medium outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-amber-400 transition-all" placeholder="https://..."/>
+                </div>
+                
+                <div className="space-y-1 pt-1">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest block mb-1">Hình nền (Background preset)</label>
+                  <select 
+                    value={BACKGROUND_PRESETS_LIST.find(opt => opt.value === tempBgUrl) ? tempBgUrl : 'custom'}
+                    onChange={e => {
+                      if (e.target.value !== 'custom') {
+                        setTempBgUrl(e.target.value);
+                      }
+                    }}
+                    className="w-full px-4 py-3 text-sm font-semibold outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-amber-400 transition-all mb-1 block"
+                  >
+                    {BACKGROUND_PRESETS_LIST.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                    <option value="custom">-- Nhập liên kết ảnh tùy chỉnh --</option>
+                  </select>
+                  <input 
+                    value={tempBgUrl} 
+                    onChange={e=>setTempBgUrl(e.target.value)} 
+                    className="w-full px-4 py-3 text-sm font-mono outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-amber-400 transition-all" 
+                    placeholder="Dán liên kết ảnh bất kỳ (https://...)"
+                  />
                 </div>
 
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pt-2 border-t border-slate-100 mt-2">Cấu hình Quiz AI</h4>
