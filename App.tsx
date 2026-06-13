@@ -90,6 +90,10 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : DEFAULT_SUBJECTS;
   });
 
+  const [landingBgUrl, setLandingBgUrl] = useState<string>(() => {
+    return localStorage.getItem('landing_bg_url') || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=2000&q=80';
+  });
+
   const [selectedGrade, setSelectedGrade] = useState<number | null>(() => {
     const saved = localStorage.getItem('selected_grade');
     if (saved === '1') return 11; // Migrate Khối 11 from ID 1 to ID 11
@@ -109,14 +113,20 @@ const App: React.FC = () => {
           .select('data')
           .eq('id', 999)
           .maybeSingle();
-        if (!error && config?.data?.subjects) {
-          setSubjects(config.data.subjects);
-          localStorage.setItem('subjects_config', JSON.stringify(config.data.subjects));
-        } else if (!config?.data?.subjects) {
-          // If not configured, initialize default subjects in DB
+        if (!error && config?.data) {
+          if (config.data.subjects) {
+            setSubjects(config.data.subjects);
+            localStorage.setItem('subjects_config', JSON.stringify(config.data.subjects));
+          }
+          if (config.data.landingBgUrl) {
+            setLandingBgUrl(config.data.landingBgUrl);
+            localStorage.setItem('landing_bg_url', config.data.landingBgUrl);
+          }
+        } else if (!config?.data) {
+          // If not configured, initialize default subjects & background in DB
           await supabase
             .from('app_settings')
-            .upsert({ id: 999, data: { subjects: DEFAULT_SUBJECTS } });
+            .upsert({ id: 999, data: { subjects: DEFAULT_SUBJECTS, landingBgUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=2000&q=80' } });
         }
       } catch (err) {
         console.error('Error fetching subjects config:', err);
@@ -129,9 +139,19 @@ const App: React.FC = () => {
     setSubjects(updated);
     localStorage.setItem('subjects_config', JSON.stringify(updated));
     try {
-      await supabase.from('app_settings').upsert({ id: 999, data: { subjects: updated } });
+      await supabase.from('app_settings').upsert({ id: 999, data: { subjects: updated, landingBgUrl } });
     } catch (err) {
       console.error("Error saving subjects config in DB:", err);
+    }
+  };
+
+  const handleSaveLandingBgUrl = async (url: string) => {
+    setLandingBgUrl(url);
+    localStorage.setItem('landing_bg_url', url);
+    try {
+      await supabase.from('app_settings').upsert({ id: 999, data: { subjects, landingBgUrl: url } });
+    } catch (err) {
+      console.error("Error saving landing bg url in DB:", err);
     }
   };
 
@@ -279,8 +299,8 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary>
       <Routes>
-        <Route path="/" element={<LandingPage visitorCount={visitorCount} onSelectGrade={handleSelectGrade} selectedGrade={selectedGrade} subjects={subjects} />} />
-        <Route path="/super" element={<SuperProtectedRoute><SuperAdminView subjects={subjects} onSaveSubjects={handleSaveSubjects} visitorCount={visitorCount} /></SuperProtectedRoute>} />
+        <Route path="/" element={<LandingPage visitorCount={visitorCount} onSelectGrade={handleSelectGrade} selectedGrade={selectedGrade} subjects={subjects} landingBgUrl={landingBgUrl} />} />
+        <Route path="/super" element={<SuperProtectedRoute><SuperAdminView subjects={subjects} onSaveSubjects={handleSaveSubjects} visitorCount={visitorCount} landingBgUrl={landingBgUrl} onSaveLandingBgUrl={handleSaveLandingBgUrl} /></SuperProtectedRoute>} />
         <Route path="/teacher" element={<ProtectedRoute><MainView isAdmin={true} data={data} updateData={updateData} isSyncing={isSyncing} visitorCount={visitorCount} selectedGrade={selectedGrade} syncError={syncError} fetchCloudData={fetchCloudData} student={null} subjects={subjects} onSaveSubjects={handleSaveSubjects} /></ProtectedRoute>} />
         <Route path="/student" element={student ? <MainView isAdmin={false} data={data} updateData={updateData} isSyncing={isSyncing} visitorCount={visitorCount} selectedGrade={selectedGrade} syncError={syncError} fetchCloudData={fetchCloudData} student={student} onLogout={() => { setStudent(null); localStorage.removeItem('student_auth_id'); }} subjects={subjects} onSaveSubjects={handleSaveSubjects} /> : <StudentLogin onLogin={setStudent} gradeId={selectedGrade || 11} themeColor={subjects.find(s => s.id === selectedGrade)?.theme || 'indigo'} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -300,7 +320,7 @@ const SuperProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children
 };
 
 
-const LandingPage: React.FC<{ visitorCount: number, onSelectGrade: (g: number) => void, selectedGrade: number | null, subjects: Subject[] }> = ({ visitorCount, onSelectGrade, selectedGrade, subjects }) => {
+const LandingPage: React.FC<{ visitorCount: number, onSelectGrade: (g: number) => void, selectedGrade: number | null, subjects: Subject[], landingBgUrl: string }> = ({ visitorCount, onSelectGrade, selectedGrade, subjects, landingBgUrl }) => {
   const [showPass, setShowPass] = useState(false);
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
@@ -361,8 +381,8 @@ const LandingPage: React.FC<{ visitorCount: number, onSelectGrade: (g: number) =
       const groupSub = groupedSubjects[activeSubjectGroup]?.[0];
       if (groupSub?.bgUrl) return groupSub.bgUrl;
     }
-    return "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=2000&q=80";
-  }, [selectedGrade, currentSubject, activeSubjectGroup, groupedSubjects]);
+    return landingBgUrl;
+  }, [selectedGrade, currentSubject, activeSubjectGroup, groupedSubjects, landingBgUrl]);
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1307,18 +1327,97 @@ const MainView: React.FC<{
             )}
           </>
         ) : (
-          <div className="flex-1 flex flex-col overflow-hidden bg-white">
+          <div className="flex-1 flex flex-col overflow-hidden relative min-h-full">
              {data.homeUrl ? (
                <iframe src={data.homeUrl} className="w-full h-full border-none" title="Trang chủ" />
              ) : (
-               <div className="flex-1 flex flex-col items-center justify-center text-center p-12">
-                 <div className="w-24 h-24 bg-slate-50 rounded-[40px] flex items-center justify-center mb-6 border border-slate-100">
-                    <Book size={48} className={`text-${themeColor}-600 opacity-10`}/>
+               <div className="flex-1 flex flex-col items-center justify-center text-center p-4 md:p-8 relative overflow-y-auto custom-scrollbar h-full w-full">
+                  {/* Subject background image */}
+                  <div 
+                    className="absolute inset-0 bg-cover bg-center opacity-[0.25] pointer-events-none scale-105 filter blur-[1px] transition-all duration-1000"
+                    style={{ backgroundImage: `url(${currentSubject?.bgUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=2000&q=80'})` }}
+                  />
+                  {/* Subtle clean linear gradient overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-b from-slate-50/80 via-white/90 to-slate-100/95 pointer-events-none" />
+                  
+                  <div className="relative z-10 w-full max-w-xl bg-white/90 backdrop-blur-xl border border-white/60 shadow-xl rounded-[32px] p-6 md:p-8 flex flex-col items-center space-y-5 my-auto animate-in fade-in zoom-in-95 duration-500">
+                 <div className={`w-14 h-14 bg-${themeColor}-100 rounded-[20px] flex items-center justify-center border border-white shadow-md hover:scale-110 transition-transform duration-300 shrink-0 mb-1`}>
+                    <Book size={28} className={`text-${themeColor}-600 animate-pulse`}/>
                  </div>
-                 <h2 className="text-2xl font-black uppercase tracking-tighter text-slate-900 opacity-5">{gradeTitle}</h2>
-                 <p className="text-[10px] font-bold text-slate-200 uppercase tracking-[0.4em] mt-4">Chọn bài học để bắt đầu</p>
-               </div>
-             )}
+                                     <div className="space-y-1">
+                      <span className={`text-[8.5px] font-black tracking-widest text-${themeColor}-600 uppercase bg-${themeColor}-50/80 border border-${themeColor}-100 px-3.5 py-1.5 rounded-full inline-block mb-1`}>
+                        Không gian học tập cá nhân hóa
+                      </span>
+                      <h2 className="text-xl md:text-2xl font-black uppercase tracking-tight text-slate-800 pt-1 leading-none">{gradeTitle}</h2>
+                      <p className="text-[9px] font-bold text-slate-400 italic max-w-md mx-auto line-clamp-1 mt-2 leading-relaxed">
+                        "{SLOGANS[sloganIdx]}"
+                      </p>
+                    </div>
+                                     {student ? (
+                      <div className="bg-slate-50/80 border border-slate-100/80 rounded-xl p-3.5 w-full flex items-center gap-3 transition-all hover:scale-[1.01] shrink-0">
+                        <div className={`w-9 h-9 bg-${themeColor}-600 rounded-lg flex items-center justify-center text-white text-xs font-black shadow-md shadow-${themeColor}-100`}>
+                          {student.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="text-left min-w-0 flex-1">
+                          <p className="text-[7.5px] font-black text-slate-400 uppercase tracking-widest">Học viên đang học</p>
+                          <h4 className="text-sm font-black text-slate-800 truncate uppercase mt-0.5 leading-none">{student.full_name || student.name}</h4>
+                        </div>
+                        <div className="text-right shrink-0 bg-white px-2.5 py-1 rounded-lg border border-slate-100/60 shadow-sm">
+                          <span className="text-[7.5px] font-bold text-slate-400 block uppercase tracking-widest leading-none">Chương trình</span>
+                          <span className={`text-[10px] font-black text-${themeColor}-600 uppercase tracking-wider block mt-1 leading-none`}>Khối {selectedGrade}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-amber-50/80 border border-amber-100/50 rounded-xl p-3 w-full flex items-center justify-between gap-3 shrink-0">
+                        <div className="text-left">
+                          <p className="text-[10.5px] font-black text-slate-700 uppercase tracking-tight leading-none leading-none">Khu vực kiểm soát Học liệu</p>
+                          <p className="text-[9px] text-slate-400 font-medium mt-1 leading-none">Bạn có quyền thay đổi cấu trúc &amp; học liệu môn này</p>
+                        </div>
+                        <span className="text-[8px] font-black bg-amber-500 text-white rounded-md px-2 py-0.5 uppercase tracking-widest shrink-0 leading-none">Giáo Viên</span>
+                       </div>
+                    )}
+
+                    {/* Quick jump to chapters */}
+                    <div className="w-full space-y-2 text-left">
+                      <div className="flex justify-between items-center px-1">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">Mục lục giáo trình</span>
+                        <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest leading-none">({filteredRootNodes.length} thư mục gốc)</span>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[140px] overflow-y-auto custom-scrollbar pr-1">
+                        {filteredRootNodes.length === 0 ? (
+                          <div className="col-span-2 text-center py-6 text-slate-300 text-[10px] italic font-semibold uppercase tracking-wider">
+                            Chương trình chưa được khởi tạo học liệu 
+                          </div>
+                        ) : (
+                          filteredRootNodes.map(node => (
+                            <button 
+                              key={node.id}
+                              onClick={() => handleSelectNode(node.id)}
+                              className="flex items-center gap-2.5 p-2.5 bg-slate-50/85 hover:bg-white hover:scale-[1.01] border border-slate-100 rounded-xl text-left transition-all group shadow-sm shrink-0"
+                            >
+                              <div className={`p-1.5 bg-white text-slate-400 group-hover:bg-${themeColor}-50 group-hover:text-${themeColor}-600 rounded-lg transition-colors shadow-sm`}>
+                                <Folder size={12} />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-[10px] font-black text-slate-700 truncate uppercase tracking-tight group-hover:text-slate-900 transition-colors leading-none">{node.title}</p>
+                                <p className="text-[7.5px] text-slate-400 font-bold uppercase tracking-widest leading-none mt-1">
+                                  {(data?.nodes || []).filter(n => n.parentId === node.id).length} Học liệu / Bài giảng
+                                </p>
+                              </div>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="text-[8px] font-bold text-slate-400 uppercase tracking-widest pt-3 border-t border-slate-100 w-full flex justify-between items-center px-1 shrink-0">
+                      <span>{formattedTime}</span>
+                      <span>Lượt học: {visitorCount}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
           </div>
         )}
       </main>
