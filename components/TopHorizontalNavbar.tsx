@@ -76,6 +76,7 @@ const DropdownTreeItem: React.FC<DropdownTreeItemProps> = ({
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (node.type === 'folder') {
+      onSelectNode(node.id);
       onToggleExpand(node.id);
     } else {
       onSelectNode(node.id);
@@ -402,7 +403,10 @@ export const TopHorizontalNavbar: React.FC<TopHorizontalNavbarProps> = ({
               return (
                 <div key={chapter.id} className="relative h-full flex items-center">
                   <button
-                    onClick={() => setActiveDropdownId(isOpen ? null : chapter.id)}
+                    onClick={() => {
+                      setActiveDropdownId(isOpen ? null : chapter.id);
+                      onSelectNode(chapter.id);
+                    }}
                     className={`h-10 px-3.5 rounded-xl flex items-center gap-2 transition-all text-[11px] font-black uppercase tracking-wider relative shrink-0 ${
                       isActive 
                         ? `${currentTheme.text} bg-slate-50 border border-slate-200/50` 
