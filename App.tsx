@@ -345,16 +345,21 @@ const LandingPage: React.FC<{ visitorCount: number, onSelectGrade: (g: number) =
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const subjectPwd = currentSubject?.password || TEACHER_PWD;
-
-    if (pin === SUPER_ADMIN_PWD) {
-      localStorage.setItem('super_auth', 'true');
-      navigate('/super');
-    } else if (pin === subjectPwd || pin === TEACHER_PWD) {
-      localStorage.setItem('teacher_auth', 'true');
-      navigate('/teacher');
+    if (selectedGrade === 999) {
+      if (pin === SUPER_ADMIN_PWD) {
+        localStorage.setItem('super_auth', 'true');
+        navigate('/super');
+      } else {
+        setError(true);
+      }
     } else {
-      setError(true);
+      const subjectPwd = currentSubject?.password || TEACHER_PWD;
+      if (pin === subjectPwd) {
+        localStorage.setItem('teacher_auth', 'true');
+        navigate('/teacher');
+      } else {
+        setError(true);
+      }
     }
   };
 
@@ -482,7 +487,10 @@ const LandingPage: React.FC<{ visitorCount: number, onSelectGrade: (g: number) =
           <div className="max-w-md w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
             <form onSubmit={handleLoginSubmit} 
               className="bg-white p-10 rounded-[40px] shadow-2xl border border-amber-100 flex flex-col items-center space-y-6">
-              <input type="password" autoFocus value={pin} onChange={(e)=>{setPin(e.target.value); setError(false);}} className={`w-full px-4 py-5 bg-slate-50 border-2 rounded-2xl text-center font-black text-2xl tracking-[0.5em] ${error?'border-red-400 animate-shake':'border-transparent focus:border-amber-400 outline-none'}`} placeholder="****" autoComplete="current-password"/>
+              <div className="w-full">
+                <input type="password" autoFocus value={pin} onChange={(e)=>{setPin(e.target.value); setError(false);}} className={`w-full px-4 py-5 bg-slate-50 border-2 rounded-2xl text-center font-black text-2xl tracking-[0.5em] ${error?'border-red-400 animate-shake':'border-transparent focus:border-amber-400 outline-none'}`} placeholder="****" autoComplete="current-password"/>
+                {error && <p className="text-[10px] text-red-500 font-bold uppercase tracking-wider mt-2">Mã PIN Super Admin không đúng!</p>}
+              </div>
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">
                 Nhập mã PIN tối cao để quản trị toàn cục
               </div>
@@ -513,7 +521,10 @@ const LandingPage: React.FC<{ visitorCount: number, onSelectGrade: (g: number) =
             ) : (
               <form onSubmit={handleLoginSubmit} 
                 className="bg-white p-10 rounded-[40px] shadow-2xl border border-amber-100 flex flex-col items-center space-y-6 animate-in zoom-in-95">
-                <input type="password" autoFocus value={pin} onChange={(e)=>{setPin(e.target.value); setError(false);}} className={`w-full px-4 py-5 bg-slate-50 border-2 rounded-2xl text-center font-black text-2xl tracking-[0.5em] ${error?'border-red-400 animate-shake':'border-transparent focus:border-amber-400 outline-none'}`} placeholder="****" autoComplete="current-password"/>
+                <div className="w-full">
+                  <input type="password" autoFocus value={pin} onChange={(e)=>{setPin(e.target.value); setError(false);}} className={`w-full px-4 py-5 bg-slate-50 border-2 rounded-2xl text-center font-black text-2xl tracking-[0.5em] ${error?'border-red-400 animate-shake':'border-transparent focus:border-amber-400 outline-none'}`} placeholder="****" autoComplete="current-password"/>
+                  {error && <p className="text-[10px] text-red-500 font-bold uppercase tracking-wider mt-2">Mã PIN Giáo viên không chính xác!</p>}
+                </div>
                 <div className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider text-center">
                   Nhập mã của giáo viên môn hoặc Super Admin
                 </div>
