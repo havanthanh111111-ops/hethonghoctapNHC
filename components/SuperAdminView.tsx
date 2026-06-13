@@ -20,6 +20,17 @@ const THEME_OPTIONS = [
   { id: 'sky', label: 'Sky (Xanh trời)', bg: 'bg-sky-600', hover: 'hover:bg-sky-700', text: 'text-sky-600', cardBg: 'bg-sky-50/50', ring: 'ring-sky-500' },
 ];
 
+const PRESET_BACKGROUND_OPTIONS = [
+  { label: 'Lưới Điện tử phát sáng (Cyber Grid)', value: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Quang phổ Cơ lượng tử (Quantum Light)', value: 'https://images.unsplash.com/photo-1507608869274-d3177c8bb4c7?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Sương mù Vũ trụ & Tinh vân (Cosmic Nebula)', value: 'https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Nguyên tử & Vũ trụ học (Cosmos Physics)', value: 'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Nghệ thuật trừu tượng lướt nước (Abstract Satin)', value: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Phòng Lab thông tin & Trí tuệ AI (AI Circuits)', value: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Học tập & Giá sách học giả (Sleek Bookshelf)', value: 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Cực quang huyền bí (Mystic Aurora)', value: 'https://images.unsplash.com/photo-1531315630201-bb15abeb1653?auto=format&fit=crop&w=2000&q=80' }
+];
+
 export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ subjects, onSaveSubjects, visitorCount }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -32,9 +43,9 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ subjects, onSave
   }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   // Form states
-  const [newSub, setNewSub] = useState<{ label: string; theme: string; password: string; layout: 'layout1' | 'layout2' | 'layout3' }>({ label: '', theme: 'indigo', password: '123', layout: 'layout1' });
+  const [newSub, setNewSub] = useState<{ label: string; theme: string; password: string; layout: 'layout1' | 'layout2' | 'layout3'; bgUrl: string }>({ label: '', theme: 'indigo', password: '123', layout: 'layout1', bgUrl: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=2000&q=80' });
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editingData, setEditingData] = useState<{ label: string; theme: string; password?: string; layout?: 'layout1' | 'layout2' | 'layout3' }>({ label: '', theme: '', password: '', layout: 'layout1' });
+  const [editingData, setEditingData] = useState<{ label: string; theme: string; password?: string; layout?: 'layout1' | 'layout2' | 'layout3'; bgUrl?: string }>({ label: '', theme: '', password: '', layout: 'layout1', bgUrl: '' });
 
   const showStatus = (text: string, type: 'success' | 'error' = 'success') => {
     setStatusMsg({ type, text });
@@ -59,7 +70,8 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ subjects, onSave
         color: themeConfig.bg,
         shadow: `shadow-${newSub.theme}-100`,
         password: newSub.password.trim() || '123',
-        layout: newSub.layout || 'layout1'
+        layout: newSub.layout || 'layout1',
+        bgUrl: newSub.bgUrl.trim() || 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=2000&q=80'
       };
 
       // 1. Initial Empty Content Row in app_settings table
@@ -81,7 +93,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ subjects, onSave
       const updatedSubjects = [...subjects, createdSub];
       await onSaveSubjects(updatedSubjects);
 
-      setNewSub({ label: '', theme: 'indigo', password: '123', layout: 'layout1' });
+      setNewSub({ label: '', theme: 'indigo', password: '123', layout: 'layout1', bgUrl: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=2000&q=80' });
       showStatus(`Đã tạo thành công môn học mới: "${createdSub.label}"!`);
     } catch (err: any) {
       console.error(err);
@@ -97,7 +109,8 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ subjects, onSave
       label: sub.label,
       theme: sub.theme,
       password: sub.password || '123',
-      layout: sub.layout || 'layout1'
+      layout: sub.layout || 'layout1',
+      bgUrl: sub.bgUrl || 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=2000&q=80'
     });
   };
 
@@ -116,7 +129,8 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ subjects, onSave
             color: themeConfig.bg,
             shadow: `shadow-${editingData.theme}-100`,
             password: editingData.password?.trim() || '123',
-            layout: editingData.layout || 'layout1'
+            layout: editingData.layout || 'layout1',
+            bgUrl: editingData.bgUrl?.trim() || 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=2000&q=80'
           };
         }
         return sub;
@@ -253,6 +267,31 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ subjects, onSave
               </select>
             </div>
 
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block ml-1 text-slate-400">Hình ảnh nền trang (Background Preset / Custom)</label>
+              <select
+                value={PRESET_BACKGROUND_OPTIONS.find(opt => opt.value === newSub.bgUrl) ? newSub.bgUrl : 'custom'}
+                onChange={e => {
+                  if (e.target.value !== 'custom') {
+                    setNewSub({ ...newSub, bgUrl: e.target.value });
+                  }
+                }}
+                className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold focus:outline-none focus:border-indigo-500 hover:bg-slate-100/50 transition-all"
+              >
+                {PRESET_BACKGROUND_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+                <option value="custom">-- Nhập liên kết ảnh tùy chỉnh --</option>
+              </select>
+              <input 
+                type="text" 
+                value={newSub.bgUrl} 
+                onChange={e => setNewSub({ ...newSub, bgUrl: e.target.value })} 
+                placeholder="Dán liên kết ảnh nền (https://...)..."
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono focus:outline-none focus:border-indigo-500"
+              />
+            </div>
+
             <div className="space-y-3">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block ml-1 text-slate-400">Chọn Màu & Chủ Đề Giao Diện</label>
               <div className="grid grid-cols-2 gap-2">
@@ -377,6 +416,30 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ subjects, onSave
                                 <option value="layout2">Layout 2 (Top + Links trái)</option>
                                 <option value="layout3">Layout 3 (Top + Links phải)</option>
                               </select>
+                            </div>
+                            <div className="space-y-1 text-left">
+                              <span className="text-[8px] font-black tracking-widest uppercase text-slate-400 block mt-1">Hình nền (Background preset)</span>
+                              <select 
+                                value={PRESET_BACKGROUND_OPTIONS.find(opt => opt.value === editingData.bgUrl) ? editingData.bgUrl : 'custom'}
+                                onChange={e => {
+                                  if (e.target.value !== 'custom') {
+                                    setEditingData({ ...editingData, bgUrl: e.target.value });
+                                  }
+                                }}
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-indigo-500 block mb-1"
+                              >
+                                {PRESET_BACKGROUND_OPTIONS.map(opt => (
+                                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                                <option value="custom">-- Nhập liên kết ảnh tùy chỉnh --</option>
+                              </select>
+                              <input 
+                                type="text"
+                                value={editingData.bgUrl || ''}
+                                onChange={e => setEditingData({ ...editingData, bgUrl: e.target.value })}
+                                placeholder="Dán liên kết ảnh nền (https://...)"
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-mono focus:outline-none focus:border-indigo-500"
+                              />
                             </div>
                           </div>
 
