@@ -201,7 +201,8 @@ const QuizModal: React.FC<QuizModalProps> = ({ nodeId, lessonTitle, lessonUrl, i
       const parts = nodeId.split('-');
       const lastPart = parts[parts.length - 1];
       const timestamp = parseInt(lastPart);
-      if (!isNaN(timestamp)) {
+      // Đảm bảo là một timestamp Unix millisecond hợp lệ (ít nhất 11 chữ số trở lên, ví dụ >= 100 tỉ)
+      if (!isNaN(timestamp) && timestamp >= 100000000000) {
         return timestamp;
       }
     }
@@ -241,7 +242,7 @@ const QuizModal: React.FC<QuizModalProps> = ({ nodeId, lessonTitle, lessonUrl, i
       const parts = nodeId.split('-');
       const lastPart = parts[parts.length - 1];
       const timestamp = parseInt(lastPart);
-      if (!isNaN(timestamp) && timestamp > 0) {
+      if (!isNaN(timestamp) && timestamp >= 100000000000) {
         ids.push(timestamp);
         if (selectedGrade && selectedGrade <= 12) {
           ids.push((selectedGrade * 100000000000000) + timestamp);
@@ -273,7 +274,7 @@ const QuizModal: React.FC<QuizModalProps> = ({ nodeId, lessonTitle, lessonUrl, i
       }
       
       if (records && records.length > 0) {
-        let bestMatch = records[0];
+        let bestMatch = null;
         const currentPrefixStr = selectedGrade ? String(selectedGrade) : '';
         const exactCurrentDbId = getDbId();
         
@@ -286,18 +287,28 @@ const QuizModal: React.FC<QuizModalProps> = ({ nodeId, lessonTitle, lessonUrl, i
             bestMatch = matchedPrefix;
           }
         }
+
+        // Với lớp 11 hoặc khối 1, kiểm tra xem có ID di sản không có tiền tố để làm fallback (< 1e14)
+        if (!bestMatch && (selectedGrade === 11 || selectedGrade === 1)) {
+          const legacyMatch = records.find(r => r.id < 100000000000000);
+          if (legacyMatch) {
+            bestMatch = legacyMatch;
+          }
+        }
         
-        setResolvedDbId(bestMatch.id);
-        
-        if (bestMatch.data && Array.isArray(bestMatch.data)) {
-          const bank = sanitizeQuestions(bestMatch.data);
-          setFullBank(bank);
-          const displaySet = isAdmin ? bank : pickRandomQuestions(bank, 5);
-          setQuestions(displaySet);
-          setUserAnswers(new Array(displaySet.length).fill(null));
-          setIsAiMode(false);
-          setLoading(false);
-          return;
+        if (bestMatch) {
+          setResolvedDbId(bestMatch.id);
+          
+          if (bestMatch.data && Array.isArray(bestMatch.data)) {
+            const bank = sanitizeQuestions(bestMatch.data);
+            setFullBank(bank);
+            const displaySet = isAdmin ? bank : pickRandomQuestions(bank, 5);
+            setQuestions(displaySet);
+            setUserAnswers(new Array(displaySet.length).fill(null));
+            setIsAiMode(false);
+            setLoading(false);
+            return;
+          }
         }
       }
       
