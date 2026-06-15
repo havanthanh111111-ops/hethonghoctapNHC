@@ -1110,6 +1110,8 @@ const MainView: React.FC<{
             setShowNodeModal(true);
           }}
           onDeleteNode={handleDeleteNode}
+          onReorderNode={handleReorderNode}
+          onMoveNode={handleMoveNode}
           onLogout={() => {
             if (isAdmin) localStorage.removeItem('teacher_auth');
             if (onLogout) onLogout();
