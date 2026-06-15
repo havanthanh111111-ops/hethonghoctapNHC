@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Book, ChevronDown, ChevronRight, Settings, Plus, Search, LogOut, Folder, Globe, Users, Maximize2, Home, Sparkles, FolderOpen, PanelRightOpen, Terminal, CheckCircle2 } from 'lucide-react';
+import { Book, ChevronDown, ChevronRight, Settings, Plus, Search, LogOut, Folder, Globe, Users, Maximize2, Home, Sparkles, FolderOpen, PanelRightOpen, Terminal, CheckCircle2, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Trash2 } from 'lucide-react';
 import { BookNode, Subject, Student } from '../types';
 
 interface TopHorizontalNavbarProps {
@@ -14,7 +14,9 @@ interface TopHorizontalNavbarProps {
   onShowSettings: () => void;
   onAddNode: (parentId: string | null, type: 'folder' | 'lesson') => void;
   onEditNode: (node: BookNode) => void;
-  onDeleteNode: (id: string, title: string) => void;
+  onDeleteNode: (id: string) => void;
+  onReorderNode: (id: string, direction: 'up' | 'down') => void;
+  onMoveNode: (id: string, direction: 'in' | 'out') => void;
   onLogout: () => void;
   searchTerm: string;
   setSearchTerm: (term: string) => void;
@@ -29,6 +31,9 @@ interface DropdownTreeItemProps {
   onSelectNode: (id: string | null) => void;
   onAddNode: (parentId: string | null, type: 'folder' | 'lesson') => void;
   onEditNode: (node: BookNode) => void;
+  onDeleteNode: (id: string) => void;
+  onReorderNode: (id: string, direction: 'up' | 'down') => void;
+  onMoveNode: (id: string, direction: 'in' | 'out') => void;
   level: number;
   currentTheme: any;
   expandedNodes: Record<string, boolean>;
@@ -45,6 +50,9 @@ const DropdownTreeItem: React.FC<DropdownTreeItemProps> = ({
   onSelectNode,
   onAddNode,
   onEditNode,
+  onDeleteNode,
+  onReorderNode,
+  onMoveNode,
   level,
   currentTheme,
   expandedNodes,
@@ -136,13 +144,41 @@ const DropdownTreeItem: React.FC<DropdownTreeItemProps> = ({
 
         {isAdmin && (
           <div className="flex items-center gap-1 scale-90 opacity-0 group-hover:opacity-100 transition-opacity ml-2 shrink-0">
+            <button
+              onClick={(e) => { e.stopPropagation(); onReorderNode(node.id, 'up'); }}
+              className="p-1 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
+              title="Lên"
+            >
+              <ArrowUp size={10} />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onReorderNode(node.id, 'down'); }}
+              className="p-1 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
+              title="Xuống"
+            >
+              <ArrowDown size={10} />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onMoveNode(node.id, 'in'); }}
+              className="p-1 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
+              title="Chuyển vào trong"
+            >
+              <ArrowRight size={10} />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onMoveNode(node.id, 'out'); }}
+              className="p-1 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
+              title="Chuyển ra ngoài"
+            >
+              <ArrowLeft size={10} />
+            </button>
             {node.type === 'folder' && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onAddNode(node.id, 'lesson');
                 }}
-                className={`p-1 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors`}
+                className={`p-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-600 transition-colors`}
                 title="Thêm bài học"
               >
                 <Plus size={10} />
@@ -157,6 +193,16 @@ const DropdownTreeItem: React.FC<DropdownTreeItemProps> = ({
               title="Sửa"
             >
               <Settings size={10} />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteNode(node.id);
+              }}
+              className="p-1 rounded bg-red-50 text-red-500 hover:bg-red-100 transition-colors"
+              title="Xóa"
+            >
+              <Trash2 size={10} />
             </button>
           </div>
         )}
@@ -178,6 +224,9 @@ const DropdownTreeItem: React.FC<DropdownTreeItemProps> = ({
                 onSelectNode={onSelectNode}
                 onAddNode={onAddNode}
                 onEditNode={onEditNode}
+                onDeleteNode={onDeleteNode}
+                onReorderNode={onReorderNode}
+                onMoveNode={onMoveNode}
                 level={level + 1}
                 currentTheme={currentTheme}
                 expandedNodes={expandedNodes}
@@ -205,6 +254,8 @@ export const TopHorizontalNavbar: React.FC<TopHorizontalNavbarProps> = ({
   onAddNode,
   onEditNode,
   onDeleteNode,
+  onReorderNode,
+  onMoveNode,
   onLogout,
   searchTerm,
   setSearchTerm
@@ -426,6 +477,26 @@ export const TopHorizontalNavbar: React.FC<TopHorizontalNavbarProps> = ({
                         {isAdmin && (
                           <div className="flex items-center gap-1 shrink-0 scale-90">
                             <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onReorderNode(chapter.id, 'up');
+                              }}
+                              className="p-1 text-slate-500 hover:bg-slate-100 rounded-md transition-colors"
+                              title="Di chuyển sang trái"
+                            >
+                              <ArrowLeft size={12} />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onReorderNode(chapter.id, 'down');
+                              }}
+                              className="p-1 text-slate-500 hover:bg-slate-100 rounded-md transition-colors"
+                              title="Di chuyển sang phải"
+                            >
+                              <ArrowRight size={12} />
+                            </button>
+                            <button
                               onClick={() => {
                                 onAddNode(chapter.id, 'folder');
                                 setActiveDropdownId(null);
@@ -441,9 +512,19 @@ export const TopHorizontalNavbar: React.FC<TopHorizontalNavbarProps> = ({
                                 setActiveDropdownId(null);
                               }}
                               className="p-1 text-amber-600 hover:bg-amber-50 rounded-md"
-                              title="Sửa tên bộ sách"
+                              title="Sửa tên chương học"
                             >
                               <Settings size={12} />
+                            </button>
+                            <button
+                              onClick={() => {
+                                onDeleteNode(chapter.id);
+                                setActiveDropdownId(null);
+                              }}
+                              className="p-1 text-red-500 hover:bg-red-50 rounded-md"
+                              title="Xóa chương học"
+                            >
+                              <Trash2 size={12} />
                             </button>
                           </div>
                         )}
@@ -467,6 +548,9 @@ export const TopHorizontalNavbar: React.FC<TopHorizontalNavbarProps> = ({
                                 onSelectNode={onSelectNode}
                                 onAddNode={onAddNode}
                                 onEditNode={onEditNode}
+                                onDeleteNode={onDeleteNode}
+                                onReorderNode={onReorderNode}
+                                onMoveNode={onMoveNode}
                                 level={0}
                                 currentTheme={currentTheme}
                                 expandedNodes={expandedNodes}
