@@ -356,7 +356,12 @@ const QuizModal: React.FC<QuizModalProps> = ({ nodeId, lessonTitle, lessonUrl, i
       1. Trường "options" chứa 4 đáp án trắc nghiệm dạng văn bản.
       2. Trường "correctIndex" PHẢI là chỉ số index 0-based (từ 0 đến 3) tương ứng với vị trí đáp án đúng trong mảng "options". Có nghĩa là: 0 = đáp án thứ nhất, 1 = đáp án thứ hai, 2 = đáp án thứ ba, 3 = đáp án thứ tư. Tuyệt đối không được dùng số 1-based (1, 2, 3, 4) hay các ký tự A, B, C, D cho trường "correctIndex".
       3. Ở cuối phần giải thích chi tiết trong trường "explanation", bạn phải luôn ghi rõ một câu kết luận có dạng "Chọn đáp án [A|B|C|D]." (ví dụ: "Chọn đáp án B." hoặc "Do vậy, phương án đúng là C.") để người dùng dễ theo dõi và đối chiếu.
-      Sử dụng ký tự $...$ cho các công thức Toán/Lý/Hóa học (LaTeX) nếu môn học có công thức. Xuất dưới dạng JSON array.`;
+
+      QUY TẮC CÔNG THỨC & KÝ HIỆU VẬT LÝ BẮT BUỘC (RẤT QUAN TRỌNG):
+      - Mọi ký hiệu đại lượng vật lý (ví dụ: F, m, a, v, t, d, s, P, N, F_mst, u_t...), đơn vị đo lường (ví dụ: m/s^2, kg, N, m/s...) hay công thức dù là siêu đơn giản hay phức tạp (ví dụ: P = m.g, F = m.a...) ĐỀU PHẢI được bọc hoàn toàn bằng cặp dấu đô-la đơn $...$ (ví dụ: $F_{mst} = \\mu_t . N$, $m$, $a$, $m/s^2$) để hiển thị đẹp dưới định dạng LaTeX.
+      - TUYỆT ĐỐI KHÔNG viết dạng chữ thường thông thường như "F_mst" hay "N", "P" hay "u_t", hãy chuyển tất cả thành LaTeX chuẩn tương đương như $F_{mst}$, $N$, $P$, $\\mu_t$.
+      - Chữ cái chỉ số dưới (subscript) phải được đặt trong dấu ngoặc nhọn đúng chuẩn LaTeX (ví dụ: viết $F_{mst}$ hoặc $F_{\\text{mst}}$, KHÔNG viết thô $F\\_mst$).
+      - Bạn phải kiểm tra kỹ toàn bộ câu hỏi (question), các lựa chọn (options) và phần giải thích (explanation) để đảm bảo không một đại lượng vật lý hay công thức nào bị sót mà viết thô không bọc dấu $. Sau khi viết xong, hãy quét lại một lần để bọc $ cho mọi đại lượng vật lý đơn lẻ và công thức.`;
 
       const tools: any[] = [];
       if (lessonUrl) {
@@ -369,11 +374,16 @@ const QuizModal: React.FC<QuizModalProps> = ({ nodeId, lessonTitle, lessonUrl, i
         1. Trường "options" chứa 4 đáp án trắc nghiệm dạng văn bản.
         2. Trường "correctIndex" PHẢI là chỉ số index 0-based (từ 0 đến 3) tương ứng với vị trí đáp án đúng trong mảng "options". Có nghĩa là: 0 = đáp án thứ nhất, 1 = đáp án thứ hai, 2 = đáp án thứ ba, 3 = đáp án thứ tư. Tuyệt đối không được dùng số 1-based (1, 2, 3, 4) hay các ký tự A, B, C, D cho trường "correctIndex".
         3. Ở cuối phần giải thích chi tiết trong trường "explanation", bạn phải luôn ghi rõ một câu kết luận có dạng "Chọn đáp án [A|B|C|D]." (ví dụ: "Chọn đáp án B." hoặc "Do vậy, phương án đúng là C.") để người dùng dễ theo dõi và đối chiếu.
-        Sử dụng ký tự $...$ cho các công thức LaTeX nếu cần thiết. Xuất kết quả dưới dạng JSON array.`;
+
+        QUY TẮC CÔNG THỨC & KÝ HIỆU VẬT LÝ BẮT BUỘC (RẤT QUAN TRỌNG):
+        - Mọi ký hiệu đại lượng vật lý (ví dụ: F, m, a, v, t, d, s, P, N, F_mst, u_t...), đơn vị đo lường (ví dụ: m/s^2, kg, N, m/s...) hay công thức dù là siêu đơn giản hay phức tạp (ví dụ: P = m.g, F = m.a...) ĐỀU PHẢI được bọc hoàn toàn bằng cặp dấu đô-la đơn $...$ (ví dụ: $F_{mst} = \\mu_t . N$, $m$, $a$, $m/s^2$) để hiển thị đẹp dưới định dạng LaTeX.
+        - TUYỆT ĐỐI KHÔNG viết dạng chữ thường thông thường như "F_mst" hay "N", "P" hay "u_t", hãy chuyển tất cả thành LaTeX chuẩn tương đương như $F_{mst}$, $N$, $P$, $\\mu_t$.
+        - Chữ cái chỉ số dưới (subscript) phải được đặt trong dấu ngoặc nhọn đúng chuẩn LaTeX (ví dụ: viết $F_{mst}$ hoặc $F_{\\text{mst}}$, KHÔNG viết thô $F\\_mst$).
+        - Bạn phải kiểm tra kỹ toàn bộ câu hỏi (question), các lựa chọn (options) và phần giải thích (explanation) để đảm bảo không một đại lượng vật lý hay công thức nào bị sót mà viết thô không bọc dấu $. Sau khi viết xong, hãy quét lại một lần để bọc $ cho mọi đại lượng vật lý đơn lẻ và công thức.`;
       }
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.5-flash',
         contents: prompt,
         config: {
           tools: tools.length > 0 ? tools : undefined,
@@ -411,7 +421,10 @@ const QuizModal: React.FC<QuizModalProps> = ({ nodeId, lessonTitle, lessonUrl, i
             model: 'gemini-3.5-flash',
             contents: `Bạn là giáo viên môn ${resolvedSubject}. Hãy tạo 10 câu trắc nghiệm cho bài/chủ đề: "${lessonTitle}". Phân bổ 4 Biết, 3 Hiểu, 3 Vận dụng. 
             Mỗi câu hỏi phải có mảng "options" chứa đúng 4 phần tử. Trường "correctIndex" PHẢI là chỉ số index dạng 0-based từ 0 đến 3 (0 = phương án đầu tiên, 1 = phương án thứ hai, v.v.). Tuyệt đối không dùng 1-based index (1-4) hay chữ cái A-D.
-            Ở câu cuối của phần giải thích "explanation", hãy viết rõ dòng kết luận: "Chọn đáp án [A|B|C|D]." Xuất JSON array.`,
+            Ở câu cuối của phần giải thích "explanation", hãy viết rõ dòng kết luận: "Chọn đáp án [A|B|C|D]."
+            
+            QUY TẮC CÔNG THỨC & KÝ HIỆU VẬT LÝ BẮT BUỘC: 
+            Mọi ký hiệu, đại lượng vật lý đơn lẻ (như $F$, $m$, $a$, $v$, $t$, $N$, $P$, $F_{mst}$, $\\mu_t$...), đơn vị đo lường (như $m/s^2$, $kg$, $N$, $m/s$...) hoặc công thức (như $P = m.g$, $F = m.a$...) ĐỀU PHẢI được bọc tuyệt đối bằng cặp dấu đô-la đơn $...$ (LaTeX). Không viết dạng chữ thường thông thường hay viết tắt không bọc dấu $.`,
             config: { responseMimeType: "application/json" }
           });
           const qDataRaw = JSON.parse(response.text || "[]");
