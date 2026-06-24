@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
-import { Book, Plus, Maximize2, Loader2, BrainCircuit, GraduationCap, ShieldCheck, Search, LogOut, Folder, Globe, Zap, Image as ImageIcon, Settings, ArrowLeft, ArrowRight, Upload, AlertCircle, Users } from 'lucide-react';
+import { Book, Plus, Maximize2, Loader2, BrainCircuit, GraduationCap, ShieldCheck, Search, LogOut, Folder, Globe, Zap, Image as ImageIcon, Settings, ArrowLeft, ArrowRight, Upload, AlertCircle, Users, Share2 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { AppData, ResourceLink, BookNode, NodeType, Student, Subject } from './types';
 import { INITIAL_DATA } from './constants';
@@ -85,6 +85,7 @@ const DEFAULT_SUBJECTS: Subject[] = [
 ];
 
 const App: React.FC = () => {
+  const navigate = useNavigate();
   const [subjects, setSubjects] = useState<Subject[]>(() => {
     const saved = localStorage.getItem('subjects_config');
     return saved ? JSON.parse(saved) : DEFAULT_SUBJECTS;
@@ -95,6 +96,21 @@ const App: React.FC = () => {
   });
 
   const [selectedGrade, setSelectedGrade] = useState<number | null>(() => {
+    const queryParams = new URLSearchParams(window.location.search);
+    let urlGrade = queryParams.get('subject') || queryParams.get('grade');
+    if (!urlGrade && window.location.hash.includes('?')) {
+      const hashQuery = window.location.hash.split('?')[1];
+      const hashParams = new URLSearchParams(hashQuery);
+      urlGrade = hashParams.get('subject') || hashParams.get('grade');
+    }
+    if (urlGrade) {
+      const parsed = parseInt(urlGrade);
+      if (!isNaN(parsed)) {
+        localStorage.setItem('selected_grade', parsed.toString());
+        return parsed;
+      }
+    }
+
     const saved = localStorage.getItem('selected_grade');
     if (saved === '1') return 11; // Migrate Khối 11 from ID 1 to ID 11
     return saved ? parseInt(saved) : null;
@@ -166,6 +182,56 @@ const App: React.FC = () => {
          });
     }
   }, [selectedGrade]);
+
+  useEffect(() => {
+    const queryParams = new URLSearchParams(window.location.search);
+    let urlGrade = queryParams.get('subject') || queryParams.get('grade');
+    let urlNode = queryParams.get('node');
+    if (!urlGrade && window.location.hash.includes('?')) {
+      const hashQuery = window.location.hash.split('?')[1];
+      const hashParams = new URLSearchParams(hashQuery);
+      urlGrade = hashParams.get('subject') || hashParams.get('grade');
+      urlNode = hashParams.get('node');
+    }
+
+    if (urlGrade && urlNode) {
+      const parsedGrade = parseInt(urlGrade);
+      if (!isNaN(parsedGrade)) {
+        // 1. Ensure the correct subject/grade is selected
+        if (selectedGrade !== parsedGrade) {
+          setSelectedGrade(parsedGrade);
+          localStorage.setItem('selected_grade', parsedGrade.toString());
+        }
+
+        // 2. Decide student/teacher routing
+        const isTeacher = localStorage.getItem('teacher_auth') === 'true';
+        if (isTeacher) {
+          if (window.location.pathname === '/' || window.location.pathname === '') {
+            navigate(`/teacher?subject=${parsedGrade}&node=${urlNode}`, { replace: true });
+          }
+        } else {
+          if (!student) {
+            const savedId = localStorage.getItem('student_auth_id');
+            if (!savedId) {
+              const timestamp = Date.now().toString();
+              const guestId = `00000000-0000-4000-a000-${timestamp.slice(-12).padStart(12, '0')}`;
+              const guestStudent: Student = {
+                id: guestId,
+                name: 'Khách',
+                full_name: 'Khách vãng lai',
+                grade_id: parsedGrade,
+                is_guest: true
+              };
+              setStudent(guestStudent);
+            }
+          }
+          if (window.location.pathname === '/' || window.location.pathname === '') {
+            navigate(`/student?subject=${parsedGrade}&node=${urlNode}`, { replace: true });
+          }
+        }
+      }
+    }
+  }, [selectedGrade, student, navigate]);
 
   const handleSelectGrade = (grade: number | null) => {
     setSelectedGrade(grade);
@@ -302,7 +368,7 @@ const App: React.FC = () => {
         <Route path="/" element={<LandingPage visitorCount={visitorCount} onSelectGrade={handleSelectGrade} selectedGrade={selectedGrade} subjects={subjects} landingBgUrl={landingBgUrl} />} />
         <Route path="/super" element={<SuperProtectedRoute><SuperAdminView subjects={subjects} onSaveSubjects={handleSaveSubjects} visitorCount={visitorCount} landingBgUrl={landingBgUrl} onSaveLandingBgUrl={handleSaveLandingBgUrl} /></SuperProtectedRoute>} />
         <Route path="/teacher" element={<ProtectedRoute><MainView isAdmin={true} data={data} updateData={updateData} isSyncing={isSyncing} visitorCount={visitorCount} selectedGrade={selectedGrade} syncError={syncError} fetchCloudData={fetchCloudData} student={null} subjects={subjects} onSaveSubjects={handleSaveSubjects} /></ProtectedRoute>} />
-        <Route path="/student" element={student ? <MainView isAdmin={false} data={data} updateData={updateData} isSyncing={isSyncing} visitorCount={visitorCount} selectedGrade={selectedGrade} syncError={syncError} fetchCloudData={fetchCloudData} student={student} onLogout={() => { setStudent(null); localStorage.removeItem('student_auth_id'); }} subjects={subjects} onSaveSubjects={handleSaveSubjects} /> : <StudentLogin onLogin={setStudent} gradeId={selectedGrade || 11} themeColor={subjects.find(s => s.id === selectedGrade)?.theme || 'indigo'} />} />
+        <Route path="/student" element={student ? <MainView isAdmin={false} data={data} updateData={updateData} isSyncing={isSyncing} visitorCount={visitorCount} selectedGrade={selectedGrade} syncError={syncError} fetchCloudData={fetchCloudData} student={student} onLogout={() => { setStudent(null); localStorage.removeItem('student_auth_id'); navigate('/', { replace: true }); }} subjects={subjects} onSaveSubjects={handleSaveSubjects} /> : <StudentLogin onLogin={setStudent} gradeId={selectedGrade || 11} themeColor={subjects.find(s => s.id === selectedGrade)?.theme || 'indigo'} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ErrorBoundary>
@@ -608,8 +674,51 @@ const MainView: React.FC<{
   onSaveSubjects?: (updated: Subject[]) => void;
 }> = ({ isAdmin, data, updateData, isSyncing, visitorCount, selectedGrade, syncError, fetchCloudData, student, onLogout, subjects, onSaveSubjects }) => {
   const [selectedId, setSelectedId] = useState<string | null>(() => {
+    const queryParams = new URLSearchParams(window.location.search);
+    let urlNode = queryParams.get('node');
+    if (!urlNode && window.location.hash.includes('?')) {
+      const hashQuery = window.location.hash.split('?')[1];
+      const hashParams = new URLSearchParams(hashQuery);
+      urlNode = hashParams.get('node');
+    }
+    if (urlNode) {
+      localStorage.setItem(`selected_id_${selectedGrade}`, urlNode);
+      return urlNode;
+    }
     return localStorage.getItem(`selected_id_${selectedGrade}`);
   });
+
+  const [copied, setCopied] = useState(false);
+  const handleShareLink = () => {
+    if (!selectedGrade || !selectedId) return;
+    const url = `${window.location.origin}${window.location.pathname}?subject=${selectedGrade}&node=${selectedId}`;
+    navigator.clipboard.writeText(url)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(err => {
+        console.error('Lỗi khi sao chép link:', err);
+        alert('Không thể tự động sao chép. Hãy sao chép liên kết này: ' + url);
+      });
+  };
+
+  useEffect(() => {
+    const queryParams = new URLSearchParams(window.location.search);
+    let urlNode = queryParams.get('node');
+    if (!urlNode && window.location.hash.includes('?')) {
+      const hashQuery = window.location.hash.split('?')[1];
+      const hashParams = new URLSearchParams(hashQuery);
+      urlNode = hashParams.get('node');
+    }
+    if (urlNode && urlNode !== selectedId) {
+      setSelectedId(urlNode);
+      localStorage.setItem(`selected_id_${selectedGrade}`, urlNode);
+      if ((data?.nodes || []).find(n => n.id === urlNode)?.url) {
+        setIframeLoading(true);
+      }
+    }
+  }, [selectedGrade, data?.nodes]);
   const [iframeLoading, setIframeLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'content' | 'tasks' | 'flashcards' | 'homework'>('content');
   const [showStudentManager, setShowStudentManager] = useState(false);
@@ -1278,6 +1387,23 @@ const MainView: React.FC<{
                           </button>
                         )}
                       </div>
+                      <button 
+                        onClick={handleShareLink} 
+                        className={`p-2 rounded-full transition-all flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-50 text-slate-500 hover:text-${themeColor}-600 hover:bg-${themeColor}-50 border border-slate-100 hover:border-${themeColor}-200/50`}
+                        title="Sao chép đường dẫn trực tiếp đến bài học này"
+                      >
+                        {copied ? (
+                          <>
+                            <span className="text-[9px] font-black uppercase text-emerald-600 animate-in fade-in duration-200">Đã sao chép!</span>
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-[9px] font-black uppercase tracking-wider">Chia sẻ link</span>
+                            <Share2 size={14} />
+                          </>
+                        )}
+                      </button>
                       {selectedNode?.url && <button onClick={()=>window.open(selectedNode.url, '_blank')} className={`p-2 bg-slate-50 text-slate-400 hover:text-${themeColor}-600 rounded-full hover:bg-${themeColor}-50 transition-colors`}><Maximize2 size={16}/></button>}
                     </div>
                   </div>
