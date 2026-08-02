@@ -9,7 +9,6 @@ import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import { supabase } from '../supabaseClient';
 import { ForumComment, Student } from '../types';
-import ConfirmModal from './ConfirmModal';
 
 // Import Katex CSS
 const KATEX_CSS = "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css";
@@ -69,12 +68,6 @@ const COLORS = [
 const HomeworkPanel: React.FC<HomeworkPanelProps> = ({ nodeId, student, isAdmin, themeColor, gradeId }) => {
   const [comments, setComments] = useState<ForumComment[]>([]);
   const [content, setContent] = useState('');
-  const [confirmConfig, setConfirmConfig] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    onConfirm: () => void;
-  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -305,61 +298,50 @@ const HomeworkPanel: React.FC<HomeworkPanelProps> = ({ nodeId, student, isAdmin,
 
   const handleDelete = async (id: string) => {
     if (!isAdmin) return;
-    setConfirmConfig({
-      isOpen: true,
-      title: "Xóa bài tập nộp",
-      message: "Bạn có chắc chắn muốn xóa bài làm này khỏi phần bài nộp?",
-      onConfirm: async () => {
-        await supabase.from('forum_comments').delete().eq('id', id);
-        setComments(prev => prev.filter(c => c.id !== id));
-      }
-    });
+    if (!window.confirm("Xoá bài này?")) return;
+    await supabase.from('forum_comments').delete().eq('id', id);
+    setComments(prev => prev.filter(c => c.id !== id));
   };
 
   const handleBatchUpdateGrade = async () => {
     if (!isAdmin || !gradeId || comments.length === 0) return;
-    setConfirmConfig({
-      isOpen: true,
-      title: "Cập nhật khối lớp hàng loạt",
-      message: `Gắn nhãn Khối ${gradeId} cho toàn bộ bài viết và câu trả lời trong bài học này?`,
-      onConfirm: async () => {
-        setLoading(true);
-        let successCount = 0;
-        try {
-          const gStr = String(gradeId);
-          
-          const tryUpdate = async (colNode: string, colGrade: string) => {
-            const { data, error } = await supabase
-              .from('forum_comments')
-              .update({ [colGrade]: gStr })
-              .or(`${colNode}.eq.${homeworkNodeId},${colNode}.ilike.${homeworkNodeId}_ans_%`)
-              .select('id');
-            
-            if (!error && data) {
-              successCount += data.length;
-              return true;
-            }
-            return false;
-          };
+    if (!window.confirm(`Gắn nhãn Khối ${gradeId} cho toàn bộ bài viết và câu trả lời trong bài học này?`)) return;
 
-          await tryUpdate('node_id', 'grade_id');
-          await tryUpdate('node_id', 'gradeId');
-          await tryUpdate('nodeId', 'grade_id');
-          await tryUpdate('nodeId', 'gradeId');
-
-          if (successCount > 0) {
-            alert(`Đã đồng bộ nhãn Khối ${gradeId} cho ${successCount} mục thảo luận.`);
-            fetchComments();
-          } else {
-            alert("Không tìm thấy dữ liệu cũ để đồng bộ hoặc bảng chưa có cột grade_id.");
-          }
-        } catch (err: any) {
-          alert("Lỗi: " + err.message);
-        } finally {
-          setLoading(false);
+    setLoading(true);
+    let successCount = 0;
+    try {
+      const gStr = String(gradeId);
+      
+      const tryUpdate = async (colNode: string, colGrade: string) => {
+        const { data, error } = await supabase
+          .from('forum_comments')
+          .update({ [colGrade]: gStr })
+          .or(`${colNode}.eq.${homeworkNodeId},${colNode}.ilike.${homeworkNodeId}_ans_%`)
+          .select('id');
+        
+        if (!error && data) {
+          successCount += data.length;
+          return true;
         }
+        return false;
+      };
+
+      await tryUpdate('node_id', 'grade_id');
+      await tryUpdate('node_id', 'gradeId');
+      await tryUpdate('nodeId', 'grade_id');
+      await tryUpdate('nodeId', 'gradeId');
+
+      if (successCount > 0) {
+        alert(`Đã đồng bộ nhãn Khối ${gradeId} cho ${successCount} mục thảo luận.`);
+        fetchComments();
+      } else {
+        alert("Không tìm thấy dữ liệu cũ để đồng bộ hoặc bảng chưa có cột grade_id.");
       }
-    });
+    } catch (err: any) {
+      alert("Lỗi: " + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const renderToolbar = () => (
@@ -467,6 +449,13 @@ const HomeworkPanel: React.FC<HomeworkPanelProps> = ({ nodeId, student, isAdmin,
         placeholder={isAdmin ? "Nhập nội dung bài viết tin tức tại đây (sử dụng Markdown)..." : "Em viết bài trả lời tại đây (sử dụng Markdown)..."} 
         className="w-full flex-1 p-8 text-slate-600 text-lg font-medium outline-none transition-all resize-none selection:bg-indigo-100 leading-relaxed placeholder:text-slate-300 min-h-[300px]" 
       />
+      
+      {previewUrl && (
+         <div className="absolute bottom-4 left-8 group/preview">
+           <img src={previewUrl} className="h-16 w-16 object-cover rounded-xl border-2 border-indigo-100 shadow-lg" />
+           <button onClick={() => { setSelectedFile(null); setPreviewUrl(null); }} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover/preview:opacity-100 transition-all shadow-md"><X size={10}/></button>
+         </div>
+      )}
     </div>
   );
 
@@ -496,8 +485,19 @@ const HomeworkPanel: React.FC<HomeworkPanelProps> = ({ nodeId, student, isAdmin,
   );
 
   const renderActionBar = () => (
-    <div className="bg-slate-50/80 p-6 flex items-center justify-end border-t border-slate-100">
-      <button onClick={() => handleSubmit()} disabled={loading} className={`px-10 py-4 ${isAdmin ? 'bg-amber-600 shadow-amber-200' : 'bg-indigo-600 shadow-indigo-200'} text-white rounded-2xl hover:scale-105 shadow-2xl disabled:opacity-50 transition-all flex items-center gap-3 group font-black uppercase text-xs tracking-widest`}>
+    <div className="bg-slate-50/80 p-6 flex items-center justify-between border-t border-slate-100">
+      <div className="flex items-center gap-4">
+         {isAdmin && (
+           <>
+             <button type="button" onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-6 py-3 bg-white text-slate-500 rounded-2xl hover:bg-indigo-50 hover:text-indigo-600 border border-slate-200 transition-all font-black uppercase text-[10px] tracking-widest shadow-sm">
+                <ImageIcon size={18} /> Đính kèm ảnh
+             </button>
+             <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
+           </>
+         )}
+      </div>
+
+      <button onClick={() => handleSubmit()} disabled={loading || uploading} className={`px-10 py-4 ${isAdmin ? 'bg-amber-600 shadow-amber-200' : 'bg-indigo-600 shadow-indigo-200'} text-white rounded-2xl hover:scale-105 shadow-2xl disabled:opacity-50 transition-all flex items-center gap-3 group font-black uppercase text-xs tracking-widest`}>
         {loading ? <RefreshCw size={20} className="animate-spin" /> : <Send size={20} className="group-hover:translate-x-1 group-hover:-translate-y-1 transition-all" />}
         {isAdmin ? (editingId ? 'Cập nhật nhiệm vụ' : 'Giao nhiệm vụ') : (editingId ? 'Cập nhật bài nộp' : 'Gửi bài nộp')}
       </button>
@@ -850,16 +850,6 @@ const HomeworkPanel: React.FC<HomeworkPanelProps> = ({ nodeId, student, isAdmin,
         </div>
       )}
 
-      <ConfirmModal
-        isOpen={confirmConfig.isOpen}
-        title={confirmConfig.title}
-        message={confirmConfig.message}
-        onConfirm={() => {
-          confirmConfig.onConfirm();
-          setConfirmConfig(prev => ({ ...prev, isOpen: false }));
-        }}
-        onCancel={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
-      />
     </div>
   );
 };
