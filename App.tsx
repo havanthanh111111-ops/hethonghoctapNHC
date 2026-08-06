@@ -18,6 +18,7 @@ import HomeworkPanel from './components/HomeworkPanel';
 import { SuperAdminView } from './components/SuperAdminView';
 import { TopHorizontalNavbar } from './components/TopHorizontalNavbar';
 import ConfirmModal from './components/ConfirmModal';
+import { DriveUploader } from './components/DriveUploader';
 
 import { getSafeEnv, SLOGANS } from './utils';
 
@@ -1038,6 +1039,7 @@ const MainView: React.FC<{
   const [tempApiKey, setTempApiKey] = useState('');
   const [tempSubjectPassword, setTempSubjectPassword] = useState('');
   const [tempBgUrl, setTempBgUrl] = useState('');
+  const [tempGasUrl, setTempGasUrl] = useState('');
 
   const currentSubjectObj = useMemo(() => {
     return subjects.find(s => s.id === selectedGrade);
@@ -1049,6 +1051,7 @@ const MainView: React.FC<{
       setTempApiKey(localStorage.getItem(`gemini_api_key_grade_${selectedGrade}`) || '');
       setTempSubjectPassword(currentSubjectObj?.password || '123');
       setTempBgUrl(currentSubjectObj?.bgUrl || '');
+      setTempGasUrl(localStorage.getItem('gas_drive_script_url') || '');
     }
   }, [showHomeConfig, selectedGrade, data?.homeUrl, currentSubjectObj]);
 
@@ -1172,6 +1175,12 @@ const MainView: React.FC<{
       localStorage.setItem(`gemini_api_key_grade_${selectedGrade}`, tempApiKey.trim());
     } else {
       localStorage.removeItem(`gemini_api_key_grade_${selectedGrade}`);
+    }
+
+    if (tempGasUrl.trim()) {
+      localStorage.setItem('gas_drive_script_url', tempGasUrl.trim());
+    } else {
+      localStorage.removeItem('gas_drive_script_url');
     }
     
     // Save updated subject PIN and bgUrl back to Supabase config (id 999)
@@ -1628,6 +1637,19 @@ const MainView: React.FC<{
                   />
                   <p className="text-[8px] text-slate-400 px-1 leading-normal">Cấu hình API Key riêng của giáo viên phụ trách môn học này để soạn bài độc lập.</p>
                 </div>
+
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pt-2 border-t border-slate-100 mt-2">Cấu hình Google Drive Upload</h4>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest">Web App URL Apps Script</label>
+                  <input 
+                    type="text" 
+                    value={tempGasUrl} 
+                    onChange={e=>setTempGasUrl(e.target.value)} 
+                    className="w-full px-4 py-3 text-[11px] font-mono outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-amber-400 transition-all" 
+                    placeholder="https://script.google.com/macros/s/.../exec"
+                  />
+                  <p className="text-[8px] text-slate-400 px-1 leading-normal">URL Ứng dụng web Google Apps Script để tự động tải file trực tiếp lên Google Drive cá nhân.</p>
+                </div>
               </div>
 
               <div className="space-y-4">
@@ -1716,9 +1738,21 @@ const MainView: React.FC<{
             {nodeModalData.type === 'lesson' && (
               <>
                 <div className="space-y-1">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest flex justify-between items-center">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest flex justify-between items-center mb-1">
                     <span>Link tài liệu (Nhúng / Iframe)</span>
                   </label>
+                  <DriveUploader
+                    themeColor={themeColor}
+                    buttonText="Tải file PDF / Ảnh / Slide lên Google Drive"
+                    onUploadSuccess={(url, fileName) => {
+                      const cleanTitle = fileName.replace(/\.[^/.]+$/, "");
+                      setNodeModalData((prev: any) => ({
+                        ...prev,
+                        url: url,
+                        title: prev.title ? prev.title : cleanTitle
+                      }));
+                    }}
+                  />
                   <input value={nodeModalData.url} onChange={e=>setNodeModalData({...nodeModalData, url:e.target.value})} className={`w-full px-4 py-3 text-[11px] outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-${themeColor}-400 transition-all`} placeholder="https://drive.google.com/... hoặc link tài liệu khác"/>
                 </div>
                 <div className="space-y-1">
@@ -1747,9 +1781,21 @@ const MainView: React.FC<{
               <input autoFocus value={resModalData.title} onChange={e=>setResModalData({...resModalData, title:e.target.value})} className={`w-full px-4 py-3 text-sm font-medium outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-${themeColor}-400 transition-all`} placeholder="Ví dụ: Video thí nghiệm..."/>
             </div>
             <div className="space-y-1">
-              <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest flex justify-between items-center">
+              <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest flex justify-between items-center mb-1">
                 <span>Đường dẫn (URL)</span>
               </label>
+              <DriveUploader
+                themeColor={themeColor}
+                buttonText="Tải file lên Google Drive"
+                onUploadSuccess={(url, fileName) => {
+                  const cleanTitle = fileName.replace(/\.[^/.]+$/, "");
+                  setResModalData((prev: any) => ({
+                    ...prev,
+                    url: url,
+                    title: prev.title ? prev.title : cleanTitle
+                  }));
+                }}
+              />
               <input value={resModalData.url} onChange={e=>setResModalData({...resModalData, url:e.target.value})} className={`w-full px-4 py-3 text-[11px] outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-${themeColor}-400 transition-all`} placeholder="Dán link tài liệu từ Google Drive, Youtube..."/>
             </div>
             <div className="flex gap-4 pt-2">
