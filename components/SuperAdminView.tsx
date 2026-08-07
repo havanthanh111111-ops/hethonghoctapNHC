@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Book, Plus, Trash2, Key, Save, LogOut, ArrowLeft, ShieldAlert, CheckCircle, RefreshCw, Palette, HelpCircle, Activity } from 'lucide-react';
+import { Book, Plus, Trash2, Key, Save, LogOut, ArrowLeft, ShieldAlert, CheckCircle, RefreshCw, Palette, HelpCircle, Activity, Globe, Upload } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { Subject } from '../types';
 import ConfirmModal from './ConfirmModal';
@@ -11,6 +11,8 @@ interface SuperAdminViewProps {
   visitorCount: number;
   landingBgUrl: string;
   onSaveLandingBgUrl: (url: string) => Promise<void>;
+  gasDriveUrl?: string;
+  onSaveGasDriveUrl?: (url: string) => Promise<void>;
 }
 
 const THEME_OPTIONS = [
@@ -33,10 +35,23 @@ const PRESET_BACKGROUND_OPTIONS = [
   { label: 'Cực quang huyền bí (Mystic Aurora)', value: 'https://images.unsplash.com/photo-1531315630201-bb15abeb1653?auto=format&fit=crop&w=2000&q=80' }
 ];
 
-export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ subjects, onSaveSubjects, visitorCount, landingBgUrl, onSaveLandingBgUrl }) => {
+export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ 
+  subjects, 
+  onSaveSubjects, 
+  visitorCount, 
+  landingBgUrl, 
+  onSaveLandingBgUrl,
+  gasDriveUrl = '',
+  onSaveGasDriveUrl
+}) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [gasUrlInput, setGasUrlInput] = useState(gasDriveUrl);
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+  useEffect(() => {
+    setGasUrlInput(gasDriveUrl || '');
+  }, [gasDriveUrl]);
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
     title: string;
@@ -399,6 +414,52 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ subjects, onSave
                   <span className="text-[8px] font-black text-white uppercase tracking-widest">Xem thử trực tiếp</span>
                   <span className="text-[8px] font-semibold text-slate-300 truncate max-w-[120px]">{landingBgUrl}</span>
                 </div>
+              </div>
+            </div>
+          </section>
+
+          {/* GLOBAL GOOGLE DRIVE STORAGE CONFIGURATION FOR SUPER ADMIN */}
+          <section className="bg-white border border-slate-100 rounded-[32px] p-8 shadow-sm">
+            <div className="flex items-center gap-2.5 pb-6 border-b border-slate-100 mb-6">
+              <Globe size={20} className="text-emerald-600" />
+              <div>
+                <h2 className="text-sm font-black uppercase text-slate-900 tracking-wider">Cấu Hình Google Drive Chung</h2>
+                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Toàn Hệ Thống</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-[10px] text-slate-500 leading-relaxed font-medium">
+                Cấu hình <strong>1 lần duy nhất</strong>. Tất cả Giáo viên/Admin của mọi môn học sẽ tự động dùng URL Google Apps Script này để tải tài liệu lên Google Drive mà không cần phải tự cài đặt.
+              </p>
+
+              <div className="space-y-2">
+                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block ml-1">URL Ứng Dụng Web Apps Script (Web App Exec URL)</label>
+                <input 
+                  type="text" 
+                  value={gasUrlInput}
+                  onChange={e => setGasUrlInput(e.target.value)}
+                  placeholder="https://script.google.com/macros/s/.../exec"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-[11px] font-mono focus:outline-none focus:border-emerald-500 hover:bg-slate-100/50 transition-all font-semibold"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  if (onSaveGasDriveUrl) {
+                    await onSaveGasDriveUrl(gasUrlInput);
+                    showStatus('Đã lưu cấu hình Google Drive chung toàn hệ thống!');
+                  }
+                }}
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-100"
+              >
+                <Save size={14} /> Lưu Cấu Hình Google Drive Chung
+              </button>
+
+              <div className="p-3 bg-emerald-50/70 border border-emerald-100 rounded-2xl text-[9.5px] text-emerald-800 leading-relaxed space-y-1">
+                <p className="font-bold">✓ Tiết kiệm thời gian cho Giáo viên:</p>
+                <p>• Giáo viên chỉ cần bấm nút <strong>"Tải file lên Google Drive"</strong> là file tự động tải lên thư mục Google Drive cá nhân/trường do bạn chỉ định.</p>
               </div>
             </div>
           </section>
