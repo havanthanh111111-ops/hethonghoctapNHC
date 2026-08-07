@@ -96,6 +96,10 @@ const App: React.FC = () => {
     return localStorage.getItem('landing_bg_url') || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=2000&q=80';
   });
 
+  const [globalGasDriveUrl, setGlobalGasDriveUrl] = useState<string>(() => {
+    return localStorage.getItem('gas_drive_script_url') || '';
+  });
+
   const [selectedGrade, setSelectedGrade] = useState<number | null>(() => {
     const queryParams = new URLSearchParams(window.location.search);
     let urlGrade = queryParams.get('subject') || queryParams.get('grade');
@@ -139,11 +143,15 @@ const App: React.FC = () => {
             setLandingBgUrl(config.data.landingBgUrl);
             localStorage.setItem('landing_bg_url', config.data.landingBgUrl);
           }
+          if (config.data.gasDriveUrl) {
+            setGlobalGasDriveUrl(config.data.gasDriveUrl);
+            localStorage.setItem('gas_drive_script_url', config.data.gasDriveUrl);
+          }
         } else if (!config?.data) {
           // If not configured, initialize default subjects & background in DB
           await supabase
             .from('app_settings')
-            .upsert({ id: 999, data: { subjects: DEFAULT_SUBJECTS, landingBgUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=2000&q=80' } });
+            .upsert({ id: 999, data: { subjects: DEFAULT_SUBJECTS, landingBgUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=2000&q=80', gasDriveUrl: globalGasDriveUrl } });
         }
       } catch (err) {
         console.error('Error fetching subjects config:', err);
@@ -156,7 +164,7 @@ const App: React.FC = () => {
     setSubjects(updated);
     localStorage.setItem('subjects_config', JSON.stringify(updated));
     try {
-      await supabase.from('app_settings').upsert({ id: 999, data: { subjects: updated, landingBgUrl } });
+      await supabase.from('app_settings').upsert({ id: 999, data: { subjects: updated, landingBgUrl, gasDriveUrl: globalGasDriveUrl } });
     } catch (err) {
       console.error("Error saving subjects config in DB:", err);
     }
@@ -166,9 +174,24 @@ const App: React.FC = () => {
     setLandingBgUrl(url);
     localStorage.setItem('landing_bg_url', url);
     try {
-      await supabase.from('app_settings').upsert({ id: 999, data: { subjects, landingBgUrl: url } });
+      await supabase.from('app_settings').upsert({ id: 999, data: { subjects, landingBgUrl: url, gasDriveUrl: globalGasDriveUrl } });
     } catch (err) {
       console.error("Error saving landing bg url in DB:", err);
+    }
+  };
+
+  const handleSaveGasDriveUrl = async (url: string) => {
+    const trimmed = url.trim();
+    setGlobalGasDriveUrl(trimmed);
+    if (trimmed) {
+      localStorage.setItem('gas_drive_script_url', trimmed);
+    } else {
+      localStorage.removeItem('gas_drive_script_url');
+    }
+    try {
+      await supabase.from('app_settings').upsert({ id: 999, data: { subjects, landingBgUrl, gasDriveUrl: trimmed } });
+    } catch (err) {
+      console.error("Error saving gasDriveUrl in DB:", err);
     }
   };
 
@@ -367,7 +390,7 @@ const App: React.FC = () => {
     <ErrorBoundary>
       <Routes>
         <Route path="/" element={<LandingPage visitorCount={visitorCount} onSelectGrade={handleSelectGrade} selectedGrade={selectedGrade} subjects={subjects} landingBgUrl={landingBgUrl} />} />
-        <Route path="/super" element={<SuperProtectedRoute><SuperAdminView subjects={subjects} onSaveSubjects={handleSaveSubjects} visitorCount={visitorCount} landingBgUrl={landingBgUrl} onSaveLandingBgUrl={handleSaveLandingBgUrl} /></SuperProtectedRoute>} />
+        <Route path="/super" element={<SuperProtectedRoute><SuperAdminView subjects={subjects} onSaveSubjects={handleSaveSubjects} visitorCount={visitorCount} landingBgUrl={landingBgUrl} onSaveLandingBgUrl={handleSaveLandingBgUrl} gasDriveUrl={globalGasDriveUrl} onSaveGasDriveUrl={handleSaveGasDriveUrl} /></SuperProtectedRoute>} />
         <Route path="/teacher" element={<ProtectedRoute><MainView isAdmin={true} data={data} updateData={updateData} isSyncing={isSyncing} visitorCount={visitorCount} selectedGrade={selectedGrade} syncError={syncError} fetchCloudData={fetchCloudData} student={null} subjects={subjects} onSaveSubjects={handleSaveSubjects} /></ProtectedRoute>} />
         <Route path="/student" element={student ? <MainView isAdmin={false} data={data} updateData={updateData} isSyncing={isSyncing} visitorCount={visitorCount} selectedGrade={selectedGrade} syncError={syncError} fetchCloudData={fetchCloudData} student={student} onLogout={() => { setStudent(null); localStorage.removeItem('student_auth_id'); navigate('/', { replace: true }); }} subjects={subjects} onSaveSubjects={handleSaveSubjects} /> : <StudentLogin onLogin={setStudent} gradeId={selectedGrade || 11} themeColor={subjects.find(s => s.id === selectedGrade)?.theme || 'indigo'} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
