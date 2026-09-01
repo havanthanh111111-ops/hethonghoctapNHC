@@ -15,6 +15,7 @@ export interface ForumComment {
   imageUrl?: string;
   createdAt: string;
   isAdmin: boolean;
+  isApproved?: boolean;
 }
 
 export interface BookNode {
@@ -76,14 +77,3 @@ export interface QuizQuestion {
   correctIndex: number;
   explanation: string;
 }
-
-export interface Subject {
-  id: number;
-  label: string;
-  color: string;
-  shadow: string;
-  theme: string;
-  password?: string;
-  layout?: 'layout1' | 'layout2' | 'layout3';
-}
-
