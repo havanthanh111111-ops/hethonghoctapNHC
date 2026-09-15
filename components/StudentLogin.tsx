@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
-import { User, Lock, Loader2, ArrowRight, GraduationCap, UserCheck } from 'lucide-react';
+import { User, Lock, Loader2, ArrowRight, GraduationCap, UserCheck, ArrowLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { Student } from '../types';
 
@@ -15,9 +16,43 @@ const StudentLogin: React.FC<StudentLoginProps> = ({ onLogin, gradeId, themeColo
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  const getThemeClasses = (color: string) => {
+    switch (color) {
+      case 'emerald':
+        return {
+          bg: 'bg-emerald-600',
+          bgHover: 'hover:bg-emerald-700',
+          bgLight: 'bg-emerald-50',
+          text: 'text-emerald-600',
+          shadow: 'shadow-emerald-200/50',
+          focusBorder: 'focus:border-emerald-500'
+        };
+      case 'rose':
+        return {
+          bg: 'bg-rose-600',
+          bgHover: 'hover:bg-rose-700',
+          bgLight: 'bg-rose-50',
+          text: 'text-rose-600',
+          shadow: 'shadow-rose-200/50',
+          focusBorder: 'focus:border-rose-500'
+        };
+      default:
+        return {
+          bg: 'bg-indigo-600',
+          bgHover: 'hover:bg-indigo-700',
+          bgLight: 'bg-indigo-50',
+          text: 'text-indigo-600',
+          shadow: 'shadow-indigo-200/50',
+          focusBorder: 'focus:border-indigo-500'
+        };
+    }
+  };
+
+  const theme = getThemeClasses(themeColor);
 
   const handleGuestLogin = () => {
-    // Tạo ID giả dạng UUID để tránh lỗi nếu cột student_id trong study_logs là kiểu UUID
     const timestamp = Date.now().toString();
     const guestId = `00000000-0000-4000-a000-${timestamp.slice(-12).padStart(12, '0')}`;
     const guestStudent: Student = {
@@ -37,7 +72,6 @@ const StudentLogin: React.FC<StudentLoginProps> = ({ onLogin, gradeId, themeColo
     setLoading(true);
     setError(null);
     try {
-      // Find student with matching name and password for this grade
       const { data, error: fetchError } = await supabase
         .from('students')
         .select('*')
@@ -48,7 +82,7 @@ const StudentLogin: React.FC<StudentLoginProps> = ({ onLogin, gradeId, themeColo
 
       if (fetchError) {
         console.error('Fetch error:', fetchError);
-        setError(`Lỗi CSDL: ${fetchError.message} (${fetchError.code})`);
+        setError(`Lỗi CSDL: ${fetchError.message}`);
         return;
       }
 
@@ -57,101 +91,111 @@ const StudentLogin: React.FC<StudentLoginProps> = ({ onLogin, gradeId, themeColo
         localStorage.setItem('student_auth_id', data.id);
         localStorage.setItem('forum_name', data.full_name || data.name);
       } else {
-        setError(`Không tìm thấy học sinh "${name.trim()}" với mật khẩu đã nhập ở Khối ${gradeId}.`);
-        console.log('Login attempt failed for:', { name: name.trim(), gradeId: gradeId });
+        setError(`Mã HS hoặc mật khẩu không chính xác.`);
       }
     } catch (err: any) {
       console.error('Login error:', err);
-      setError('Đã xảy ra lỗi khi đăng nhập. Vui lòng thử lại.');
+      setError('Đã xảy ra lỗi khi đăng nhập.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
-      <div className="w-full max-w-md bg-white rounded-[40px] shadow-2xl shadow-slate-200/50 border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-500">
-        <div className={`h-3 w-full bg-${themeColor}-600`}></div>
-        <div className="p-10 space-y-8">
-           <div className="flex flex-col items-center text-center space-y-4">
-              <div className={`w-20 h-20 bg-${themeColor}-50 rounded-3xl flex items-center justify-center text-${themeColor}-600 shadow-sm`}>
-                 <GraduationCap size={40} />
-              </div>
-              <div>
-                 <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Đăng nhập Học sinh</h2>
-                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">Sử dụng tài khoản giáo viên cấp</p>
-              </div>
-           </div>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-4 relative overflow-hidden">
+      {/* Nút quay lại trang chủ */}
+      <button 
+        onClick={() => navigate('/')} 
+        className="absolute top-4 left-4 sm:top-6 sm:left-6 flex items-center gap-1.5 px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-slate-800 transition-all shadow-sm z-20"
+      >
+        <ArrowLeft size={14} /> Trang chủ
+      </button>
 
-           <form onSubmit={handleLogin} className="space-y-4">
-              <div className="space-y-2">
-                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Mã học sinh (ID)</label>
-                 <div className="relative">
-                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                    <input 
-                       type="text"
-                       value={name}
-                       onChange={e => setName(e.target.value)}
-                       className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-transparent focus:border-indigo-400 rounded-2xl outline-none font-medium transition-all"
-                       placeholder="Vd: HS2024001"
-                       required
-                    />
-                 </div>
-              </div>
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-300">
+        <div className={`h-2 w-full ${theme.bg}`}></div>
+        
+        <div className="p-6 sm:p-7 space-y-5">
+          {/* Header */}
+          <div className="flex items-center gap-3">
+            <div className={`w-12 h-12 ${theme.bgLight} rounded-2xl flex items-center justify-center ${theme.text} shrink-0`}>
+              <GraduationCap size={28} />
+            </div>
+            <div>
+              <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">Đăng nhập Học sinh</h2>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Lớp Vật Lý Khối {gradeId}</p>
+            </div>
+          </div>
 
-              <div className="space-y-2">
-                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Mật khẩu</label>
-                 <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                    <input 
-                       type="password"
-                       value={password}
-                       onChange={e => setPassword(e.target.value)}
-                       className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-transparent focus:border-indigo-400 rounded-2xl outline-none font-medium transition-all"
-                       placeholder="••••••"
-                       required
-                    />
-                 </div>
-              </div>
+          {/* Nút Đăng nhập với tư cách Khách - Nổi bật ở trên cùng */}
+          <button 
+            type="button"
+            onClick={handleGuestLogin}
+            className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black uppercase tracking-wider text-xs transition-all shadow-md shadow-emerald-100 flex items-center justify-center gap-2 group"
+          >
+            <UserCheck size={18} className="group-hover:scale-110 transition-transform" />
+            Vào xem tự do với tư cách Khách
+          </button>
 
-              {error && (
-                 <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest text-center animate-shake bg-red-50 p-3 rounded-xl border border-red-100">
-                   {error}
-                 </p>
+          <div className="flex items-center gap-3">
+            <div className="h-[1px] flex-1 bg-slate-100"></div>
+            <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Hoặc dùng tài khoản học sinh</span>
+            <div className="h-[1px] flex-1 bg-slate-100"></div>
+          </div>
+
+          {/* Form đăng nhập tài khoản */}
+          <form onSubmit={handleLogin} className="space-y-3.5">
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Mã học sinh (ID)</label>
+              <div className="relative">
+                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+                <input 
+                  type="text"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  className={`w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 ${theme.focusBorder} rounded-xl outline-none font-medium text-xs transition-all`}
+                  placeholder="Vd: HS2024001"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Mật khẩu</label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+                <input 
+                  type="password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className={`w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 ${theme.focusBorder} rounded-xl outline-none font-medium text-xs transition-all`}
+                  placeholder="••••••"
+                />
+              </div>
+            </div>
+
+            {error && (
+              <p className="text-[9px] font-bold text-red-500 uppercase tracking-widest text-center animate-shake bg-red-50 p-2 rounded-xl border border-red-100">
+                {error}
+              </p>
+            )}
+
+            <button 
+              type="submit" 
+              disabled={loading || !name || !password}
+              className={`w-full py-3 ${loading || !name || !password ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : `${theme.bg} ${theme.bgHover} text-white shadow-md ${theme.shadow}`} rounded-xl font-black uppercase tracking-wider text-xs transition-all flex items-center justify-center gap-2`}
+            >
+              {loading ? (
+                <Loader2 className="animate-spin" size={16} />
+              ) : (
+                <>
+                  Vào lớp học <ArrowRight size={16} />
+                </>
               )}
+            </button>
+          </form>
 
-              <button 
-                type="submit" 
-                disabled={loading || !name || !password}
-                className={`w-full py-5 ${loading ? 'bg-slate-100' : `bg-${themeColor}-600 shadow-xl shadow-${themeColor}-100 hover:scale-[1.02]`} text-white rounded-[24px] font-black uppercase tracking-[0.1em] transition-all flex items-center justify-center gap-2`}
-              >
-                {loading ? (
-                   <Loader2 className="animate-spin" size={20} />
-                ) : (
-                  <>
-                    Vào lớp học ngay <ArrowRight size={20} />
-                  </>
-                )}
-              </button>
-
-              <div className="flex items-center gap-4 py-2">
-                 <div className="h-[1px] flex-1 bg-slate-100"></div>
-                 <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">Hoặc</span>
-                 <div className="h-[1px] flex-1 bg-slate-100"></div>
-              </div>
-
-              <button 
-                type="button"
-                onClick={handleGuestLogin}
-                className="w-full py-4 bg-white border-2 border-slate-100 text-slate-500 hover:border-amber-400 hover:text-amber-600 rounded-[24px] font-black uppercase tracking-[0.1em] transition-all flex items-center justify-center gap-2 text-xs"
-              >
-                 Vào xem với tư cách Khách <UserCheck size={18} />
-              </button>
-           </form>
-
-           <div className="text-center">
-              <p className="text-[9px] text-slate-300 font-bold uppercase tracking-widest">Nếu chưa có tài khoản, hãy liên hệ Thầy/Cô để được cấp phép.</p>
-           </div>
+          <p className="text-[9px] text-slate-400 font-medium text-center leading-tight">
+            Tài khoản riêng chỉ cấp cho học sinh cần theo dõi đánh giá.
+          </p>
         </div>
       </div>
     </div>
@@ -159,3 +203,4 @@ const StudentLogin: React.FC<StudentLoginProps> = ({ onLogin, gradeId, themeColo
 };
 
 export default StudentLogin;
+
