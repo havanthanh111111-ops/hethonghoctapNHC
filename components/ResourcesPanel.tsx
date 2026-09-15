@@ -49,10 +49,22 @@ const ResourceItem: React.FC<{
   );
 };
 
-const ResourcesPanel: React.FC<ResourcesPanelProps> = ({ isAdmin, selectedId, lessonResources, globalResources, themeColor, onAdd, onEdit, onDelete, className = "border-l border-slate-50" }) => {
+const ResourcesPanel: React.FC<ResourcesPanelProps> = ({ 
+  isAdmin, 
+  selectedId, 
+  lessonResources = [], 
+  globalResources = [], 
+  themeColor, 
+  onAdd, 
+  onEdit, 
+  onDelete, 
+  className = "border-l border-slate-50" 
+}) => {
   const isDocument = (url: string) => url.toLowerCase().endsWith('.pdf') || url.toLowerCase().includes('drive.google.com');
-  const docResources = lessonResources.filter(r => isDocument(r.url));
-  const htmlResources = lessonResources.filter(r => !isDocument(r.url));
+  const safeLessonResources = lessonResources || [];
+  const safeGlobalResources = globalResources || [];
+  const docResources = safeLessonResources.filter(r => isDocument(r.url));
+  const htmlResources = safeLessonResources.filter(r => !isDocument(r.url));
 
   const themeTextClasses = {
     'indigo-600': 'text-indigo-600',
@@ -100,10 +112,10 @@ const ResourcesPanel: React.FC<ResourcesPanelProps> = ({ isAdmin, selectedId, le
         Thư viện chung {isAdmin && <button onClick={()=>onAdd(true)} className={`${currentThemeTextClass} ${currentThemeHoverBgClass} p-1 rounded-lg`}><Plus size={16}/></button>}
       </div>
       <div className="p-3 space-y-2 bg-white/30">
-        {globalResources.map(r => (
+        {safeGlobalResources.map(r => (
           <ResourceItem key={r.id} r={r} isGlobal={true} isAdmin={isAdmin} themeColor={themeColor} onEdit={onEdit} onDelete={onDelete} />
         ))}
-        {globalResources.length === 0 && <p className="text-center text-[9px] text-slate-200 font-bold uppercase pt-4 pb-4 tracking-widest">Trống</p>}
+        {safeGlobalResources.length === 0 && <p className="text-center text-[9px] text-slate-200 font-bold uppercase pt-4 pb-4 tracking-widest">Trống</p>}
       </div>
     </aside>
   );

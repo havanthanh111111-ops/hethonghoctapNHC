@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Book, Plus, Trash2, Key, Save, LogOut, ArrowLeft, ShieldAlert, CheckCircle, RefreshCw, Palette, HelpCircle, Activity } from 'lucide-react';
+import { Book, Plus, Trash2, Key, Save, LogOut, ArrowLeft, ShieldAlert, CheckCircle, RefreshCw, Palette, HelpCircle, Activity, Globe, Upload } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { Subject } from '../types';
 import ConfirmModal from './ConfirmModal';
@@ -9,6 +9,10 @@ interface SuperAdminViewProps {
   subjects: Subject[];
   onSaveSubjects: (updated: Subject[]) => Promise<void>;
   visitorCount: number;
+  landingBgUrl: string;
+  onSaveLandingBgUrl: (url: string) => Promise<void>;
+  gasDriveUrl?: string;
+  onSaveGasDriveUrl?: (url: string) => Promise<void>;
 }
 
 const THEME_OPTIONS = [
@@ -20,10 +24,34 @@ const THEME_OPTIONS = [
   { id: 'sky', label: 'Sky (Xanh trời)', bg: 'bg-sky-600', hover: 'hover:bg-sky-700', text: 'text-sky-600', cardBg: 'bg-sky-50/50', ring: 'ring-sky-500' },
 ];
 
-export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ subjects, onSaveSubjects, visitorCount }) => {
+const PRESET_BACKGROUND_OPTIONS = [
+  { label: 'Lưới Điện tử phát sáng (Cyber Grid)', value: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Quang phổ Cơ lượng tử (Quantum Light)', value: 'https://images.unsplash.com/photo-1507608869274-d3177c8bb4c7?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Sương mù Vũ trụ & Tinh vân (Cosmic Nebula)', value: 'https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Nguyên tử & Vũ trụ học (Cosmos Physics)', value: 'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Nghệ thuật trừu tượng lướt nước (Abstract Satin)', value: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Phòng Lab thông tin & Trí tuệ AI (AI Circuits)', value: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Học tập & Giá sách học giả (Sleek Bookshelf)', value: 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Cực quang huyền bí (Mystic Aurora)', value: 'https://images.unsplash.com/photo-1531315630201-bb15abeb1653?auto=format&fit=crop&w=2000&q=80' }
+];
+
+export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ 
+  subjects, 
+  onSaveSubjects, 
+  visitorCount, 
+  landingBgUrl, 
+  onSaveLandingBgUrl,
+  gasDriveUrl = '',
+  onSaveGasDriveUrl
+}) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [gasUrlInput, setGasUrlInput] = useState(gasDriveUrl);
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+  useEffect(() => {
+    setGasUrlInput(gasDriveUrl || '');
+  }, [gasDriveUrl]);
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
     title: string;
@@ -32,9 +60,9 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ subjects, onSave
   }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   // Form states
-  const [newSub, setNewSub] = useState<{ label: string; theme: string; password: string; layout: 'layout1' | 'layout2' | 'layout3' }>({ label: '', theme: 'indigo', password: '123', layout: 'layout1' });
+  const [newSub, setNewSub] = useState<{ label: string; theme: string; password: string; layout: 'layout1' | 'layout2' | 'layout3'; bgUrl: string }>({ label: '', theme: 'indigo', password: '123', layout: 'layout1', bgUrl: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=2000&q=80' });
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editingData, setEditingData] = useState<{ label: string; theme: string; password?: string; layout?: 'layout1' | 'layout2' | 'layout3' }>({ label: '', theme: '', password: '', layout: 'layout1' });
+  const [editingData, setEditingData] = useState<{ label: string; theme: string; password?: string; layout?: 'layout1' | 'layout2' | 'layout3'; bgUrl?: string }>({ label: '', theme: '', password: '', layout: 'layout1', bgUrl: '' });
 
   const showStatus = (text: string, type: 'success' | 'error' = 'success') => {
     setStatusMsg({ type, text });
@@ -59,7 +87,8 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ subjects, onSave
         color: themeConfig.bg,
         shadow: `shadow-${newSub.theme}-100`,
         password: newSub.password.trim() || '123',
-        layout: newSub.layout || 'layout1'
+        layout: newSub.layout || 'layout1',
+        bgUrl: newSub.bgUrl.trim() || 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=2000&q=80'
       };
 
       // 1. Initial Empty Content Row in app_settings table
@@ -81,7 +110,7 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ subjects, onSave
       const updatedSubjects = [...subjects, createdSub];
       await onSaveSubjects(updatedSubjects);
 
-      setNewSub({ label: '', theme: 'indigo', password: '123', layout: 'layout1' });
+      setNewSub({ label: '', theme: 'indigo', password: '123', layout: 'layout1', bgUrl: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=2000&q=80' });
       showStatus(`Đã tạo thành công môn học mới: "${createdSub.label}"!`);
     } catch (err: any) {
       console.error(err);
@@ -97,7 +126,8 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ subjects, onSave
       label: sub.label,
       theme: sub.theme,
       password: sub.password || '123',
-      layout: sub.layout || 'layout1'
+      layout: sub.layout || 'layout1',
+      bgUrl: sub.bgUrl || 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=2000&q=80'
     });
   };
 
@@ -116,7 +146,8 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ subjects, onSave
             color: themeConfig.bg,
             shadow: `shadow-${editingData.theme}-100`,
             password: editingData.password?.trim() || '123',
-            layout: editingData.layout || 'layout1'
+            layout: editingData.layout || 'layout1',
+            bgUrl: editingData.bgUrl?.trim() || 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=2000&q=80'
           };
         }
         return sub;
@@ -206,97 +237,233 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ subjects, onSave
       {/* BODY INTERFACE */}
       <main className="max-w-7xl w-full mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 flex-1">
         
-        {/* PANEL A: ADD NEW SUBJECT FORM */}
-        <section className="bg-white border border-slate-100 rounded-[32px] p-8 shadow-sm h-fit">
-          <div className="flex items-center gap-2.5 pb-6 border-b border-slate-100 mb-6">
-            <Plus size={20} className="text-indigo-600" />
-            <h2 className="text-sm font-black uppercase text-slate-900 tracking-wider">Tạo Môn Học Mới</h2>
-          </div>
-
-          <form onSubmit={handleCreateSubject} className="space-y-6">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block ml-1">Tên môn học & Phân nhóm</label>
-              <input 
-                type="text" 
-                value={newSub.label}
-                onChange={e => setNewSub({ ...newSub, label: e.target.value })}
-                placeholder="Ví dụ: Vật Lý 11, Hóa Học 10, Toán Số Học..."
-                className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold focus:outline-none focus:border-indigo-500 hover:bg-slate-100/50 transition-all"
-                required
-              />
+        {/* LEFT COLUMN: CREATING SUBJECTS AND PORTAL BACKGROUND CONFIG */}
+        <div className="space-y-8 h-fit">
+          {/* PANEL A: ADD NEW SUBJECT FORM */}
+          <section className="bg-white border border-slate-100 rounded-[32px] p-8 shadow-sm h-fit">
+            <div className="flex items-center gap-2.5 pb-6 border-b border-slate-100 mb-6">
+              <Plus size={20} className="text-indigo-600" />
+              <h2 className="text-sm font-black uppercase text-slate-900 tracking-wider">Tạo Môn Học Mới</h2>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block ml-1">Mật khẩu giáo viên môn này</label>
-              <div className="relative">
-                <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+            <form onSubmit={handleCreateSubject} className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block ml-1">Tên môn học & Phân nhóm</label>
                 <input 
                   type="text" 
-                  value={newSub.password}
-                  onChange={e => setNewSub({ ...newSub, password: e.target.value })}
-                  placeholder="Mặc định: 123"
-                  className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono focus:outline-none focus:border-indigo-500 hover:bg-slate-100/50 transition-all"
+                  value={newSub.label}
+                  onChange={e => setNewSub({ ...newSub, label: e.target.value })}
+                  placeholder="Ví dụ: Vật Lý 11, Hóa Học 10, Toán Số Học..."
+                  className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold focus:outline-none focus:border-indigo-500 hover:bg-slate-100/50 transition-all"
+                  required
                 />
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block ml-1 text-slate-400">Kiểu Bố Cục Giao Diện (Layout)</label>
-              <select
-                value={newSub.layout}
-                onChange={e => setNewSub({ ...newSub, layout: e.target.value as 'layout1' | 'layout2' | 'layout3' })}
-                className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold focus:outline-none focus:border-indigo-500 hover:bg-slate-100/50 transition-all"
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block ml-1">Mật khẩu giáo viên môn này</label>
+                <div className="relative">
+                  <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+                  <input 
+                    type="text" 
+                    value={newSub.password}
+                    onChange={e => setNewSub({ ...newSub, password: e.target.value })}
+                    placeholder="Mặc định: 123"
+                    className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono focus:outline-none focus:border-indigo-500 hover:bg-slate-100/50 transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block ml-1 text-slate-400">Kiểu Bố Cục Giao Diện (Layout)</label>
+                <select
+                  value={newSub.layout}
+                  onChange={e => setNewSub({ ...newSub, layout: e.target.value as 'layout1' | 'layout2' | 'layout3' })}
+                  className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold focus:outline-none focus:border-indigo-500 hover:bg-slate-100/50 transition-all"
+                >
+                  <option value="layout1">Layout 1: Bố cục cột bên trái (Mặc định)</option>
+                  <option value="layout2">Layout 2: Menu ngang trên đầu + Thư mục tài liệu bên TRÁI</option>
+                  <option value="layout3">Layout 3: Menu ngang trên đầu + Thư mục tài liệu bên PHẢI</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block ml-1 text-slate-400">Hình ảnh nền trang (Background Preset / Custom)</label>
+                <select
+                  value={PRESET_BACKGROUND_OPTIONS.find(opt => opt.value === newSub.bgUrl) ? newSub.bgUrl : 'custom'}
+                  onChange={e => {
+                    if (e.target.value !== 'custom') {
+                      setNewSub({ ...newSub, bgUrl: e.target.value });
+                    }
+                  }}
+                  className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold focus:outline-none focus:border-indigo-500 hover:bg-slate-100/50 transition-all"
+                >
+                  {PRESET_BACKGROUND_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                  <option value="custom">-- Nhập liên kết ảnh tùy chỉnh --</option>
+                </select>
+                <input 
+                  type="text" 
+                  value={newSub.bgUrl} 
+                  onChange={e => setNewSub({ ...newSub, bgUrl: e.target.value })} 
+                  placeholder="Dán liên kết ảnh nền (https://...)..."
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block ml-1 text-slate-400">Chọn Màu & Chủ Đề Giao Diện</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {THEME_OPTIONS.map((theme) => (
+                    <button
+                      type="button"
+                      key={theme.id}
+                      onClick={() => setNewSub({ ...newSub, theme: theme.id })}
+                      className={`p-3 border rounded-2xl flex items-center gap-2 text-left transition-all ${
+                        newSub.theme === theme.id 
+                          ? `border-indigo-500 bg-indigo-50/20 ring-2 ${theme.ring}` 
+                          : 'border-slate-100 bg-white hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className={`w-4 h-4 rounded-full ${theme.bg} shrink-0`}></div>
+                      <span className="text-[10px] font-bold text-slate-600 truncate">{theme.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {statusMsg && (
+                <div className={`p-4 rounded-2xl border text-xs flex items-center gap-2 animate-in fade-in duration-300 ${
+                  statusMsg.type === 'success' 
+                    ? 'bg-emerald-50 border-emerald-100 text-emerald-800' 
+                    : 'bg-rose-50 border-rose-100 text-rose-800'
+                }`}>
+                  {statusMsg.type === 'success' ? <CheckCircle size={16} /> : <ShieldAlert size={16} />}
+                  <span>{statusMsg.text}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading || !newSub.label.trim()}
+                className={`w-full py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white shadow-xl shadow-indigo-100 flex items-center justify-center gap-2 transition-all ${
+                  loading || !newSub.label.trim() ? 'bg-slate-300 shadow-none' : 'bg-indigo-600 hover:bg-indigo-700 hover:scale-[1.02]'
+                }`}
               >
-                <option value="layout1">Layout 1: Bố cục cột bên trái (Mặc định)</option>
-                <option value="layout2">Layout 2: Menu ngang trên đầu + Thư mục tài liệu bên TRÁI</option>
-                <option value="layout3">Layout 3: Menu ngang trên đầu + Thư mục tài liệu bên PHẢI</option>
-              </select>
+                {loading ? <RefreshCw className="animate-spin" size={14} /> : <Plus size={14} />}
+                Tạo môn học & Khởi tạo CSDL
+              </button>
+            </form>
+          </section>
+
+          {/* LANDING PAGE BG CONFIG SECTION */}
+          <section className="bg-white border border-slate-100 rounded-[32px] p-8 shadow-sm">
+            <div className="flex items-center gap-2.5 pb-6 border-b border-slate-100 mb-6">
+              <Palette size={20} className="text-amber-500" />
+              <h2 className="text-sm font-black uppercase text-slate-900 tracking-wider">Hình Nền Trang Chủ</h2>
             </div>
 
-            <div className="space-y-3">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block ml-1 text-slate-400">Chọn Màu & Chủ Đề Giao Diện</label>
-              <div className="grid grid-cols-2 gap-2">
-                {THEME_OPTIONS.map((theme) => (
-                  <button
-                    type="button"
-                    key={theme.id}
-                    onClick={() => setNewSub({ ...newSub, theme: theme.id })}
-                    className={`p-3 border rounded-2xl flex items-center gap-2 text-left transition-all ${
-                      newSub.theme === theme.id 
-                        ? `border-indigo-500 bg-indigo-50/20 ring-2 ${theme.ring}` 
-                        : 'border-slate-100 bg-white hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className={`w-4 h-4 rounded-full ${theme.bg} shrink-0`}></div>
-                    <span className="text-[10px] font-bold text-slate-600 truncate">{theme.label}</span>
-                  </button>
-                ))}
+            <div className="space-y-4">
+              <p className="text-[10px] font-bold text-slate-400 leading-relaxed uppercase">
+                Hình nền mặc định hiển thị ở màn hình chờ đầu tiên của học viên (khi vừa đăng nhập / chưa chọn môn học).
+              </p>
+
+              <div className="space-y-2 text-left">
+                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block ml-1">Chọn từ thư viện ảnh</label>
+                <select 
+                  value={PRESET_BACKGROUND_OPTIONS.find(opt => opt.value === landingBgUrl) ? landingBgUrl : 'custom'}
+                  onChange={async (e) => {
+                    if (e.target.value !== 'custom') {
+                      await onSaveLandingBgUrl(e.target.value);
+                      showStatus('Đã cập nhật hình nền trang chủ!');
+                    }
+                  }}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold focus:outline-none focus:border-indigo-500 block mb-2"
+                >
+                  {PRESET_BACKGROUND_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                  <option value="custom">-- Nhập liên kết ảnh tùy chỉnh --</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block ml-1">Hoặc dán URL ảnh tùy chỉnh</label>
+                <input 
+                  type="text" 
+                  value={landingBgUrl}
+                  onChange={async (e) => {
+                    const val = e.target.value.trim();
+                    if (val) {
+                      await onSaveLandingBgUrl(val);
+                    }
+                  }}
+                  placeholder="Dán liên kết ảnh nền (https://...)"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-[11px] font-mono focus:outline-none focus:border-indigo-500 hover:bg-slate-100/50 transition-all font-semibold"
+                />
+              </div>
+
+              {/* Real-time background thumbnail preview */}
+              <div className="relative aspect-[16/10] w-full rounded-2xl overflow-hidden border border-slate-100 shadow-md bg-slate-100 mt-2">
+                <img 
+                  src={landingBgUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=2000&q=80'} 
+                  alt="Landing page live preview" 
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-900/80 to-transparent p-3 flex justify-between items-center">
+                  <span className="text-[8px] font-black text-white uppercase tracking-widest">Xem thử trực tiếp</span>
+                  <span className="text-[8px] font-semibold text-slate-300 truncate max-w-[120px]">{landingBgUrl}</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* GLOBAL GOOGLE DRIVE STORAGE CONFIGURATION FOR SUPER ADMIN */}
+          <section className="bg-white border border-slate-100 rounded-[32px] p-8 shadow-sm">
+            <div className="flex items-center gap-2.5 pb-6 border-b border-slate-100 mb-6">
+              <Globe size={20} className="text-emerald-600" />
+              <div>
+                <h2 className="text-sm font-black uppercase text-slate-900 tracking-wider">Cấu Hình Google Drive Chung</h2>
+                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Toàn Hệ Thống</p>
               </div>
             </div>
 
-            {statusMsg && (
-              <div className={`p-4 rounded-2xl border text-xs flex items-center gap-2 animate-in fade-in duration-300 ${
-                statusMsg.type === 'success' 
-                  ? 'bg-emerald-50 border-emerald-100 text-emerald-800' 
-                  : 'bg-rose-50 border-rose-100 text-rose-800'
-              }`}>
-                {statusMsg.type === 'success' ? <CheckCircle size={16} /> : <ShieldAlert size={16} />}
-                <span>{statusMsg.text}</span>
-              </div>
-            )}
+            <div className="space-y-4">
+              <p className="text-[10px] text-slate-500 leading-relaxed font-medium">
+                Cấu hình <strong>1 lần duy nhất</strong>. Tất cả Giáo viên/Admin của mọi môn học sẽ tự động dùng URL Google Apps Script này để tải tài liệu lên Google Drive mà không cần phải tự cài đặt.
+              </p>
 
-            <button
-              type="submit"
-              disabled={loading || !newSub.label.trim()}
-              className={`w-full py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white shadow-xl shadow-indigo-100 flex items-center justify-center gap-2 transition-all ${
-                loading || !newSub.label.trim() ? 'bg-slate-300 shadow-none' : 'bg-indigo-600 hover:bg-indigo-700 hover:scale-[1.02]'
-              }`}
-            >
-              {loading ? <RefreshCw className="animate-spin" size={14} /> : <Plus size={14} />}
-              Tạo môn học & Khởi tạo CSDL
-            </button>
-          </form>
-        </section>
+              <div className="space-y-2">
+                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block ml-1">URL Ứng Dụng Web Apps Script (Web App Exec URL)</label>
+                <input 
+                  type="text" 
+                  value={gasUrlInput}
+                  onChange={e => setGasUrlInput(e.target.value)}
+                  placeholder="https://script.google.com/macros/s/.../exec"
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-[11px] font-mono focus:outline-none focus:border-emerald-500 hover:bg-slate-100/50 transition-all font-semibold"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  if (onSaveGasDriveUrl) {
+                    await onSaveGasDriveUrl(gasUrlInput);
+                    showStatus('Đã lưu cấu hình Google Drive chung toàn hệ thống!');
+                  }
+                }}
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-100"
+              >
+                <Save size={14} /> Lưu Cấu Hình Google Drive Chung
+              </button>
+
+              <div className="p-3 bg-emerald-50/70 border border-emerald-100 rounded-2xl text-[9.5px] text-emerald-800 leading-relaxed space-y-1">
+                <p className="font-bold">✓ Tiết kiệm thời gian cho Giáo viên:</p>
+                <p>• Giáo viên chỉ cần bấm nút <strong>"Tải file lên Google Drive"</strong> là file tự động tải lên thư mục Google Drive cá nhân/trường do bạn chỉ định.</p>
+              </div>
+            </div>
+          </section>
+        </div>
 
         {/* PANEL B: ACTIVE SUBJECTS MANAGE LIST */}
         <section className="lg:col-span-2 space-y-4">
@@ -377,6 +544,30 @@ export const SuperAdminView: React.FC<SuperAdminViewProps> = ({ subjects, onSave
                                 <option value="layout2">Layout 2 (Top + Links trái)</option>
                                 <option value="layout3">Layout 3 (Top + Links phải)</option>
                               </select>
+                            </div>
+                            <div className="space-y-1 text-left">
+                              <span className="text-[8px] font-black tracking-widest uppercase text-slate-400 block mt-1">Hình nền (Background preset)</span>
+                              <select 
+                                value={PRESET_BACKGROUND_OPTIONS.find(opt => opt.value === editingData.bgUrl) ? editingData.bgUrl : 'custom'}
+                                onChange={e => {
+                                  if (e.target.value !== 'custom') {
+                                    setEditingData({ ...editingData, bgUrl: e.target.value });
+                                  }
+                                }}
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-indigo-500 block mb-1"
+                              >
+                                {PRESET_BACKGROUND_OPTIONS.map(opt => (
+                                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                                <option value="custom">-- Nhập liên kết ảnh tùy chỉnh --</option>
+                              </select>
+                              <input 
+                                type="text"
+                                value={editingData.bgUrl || ''}
+                                onChange={e => setEditingData({ ...editingData, bgUrl: e.target.value })}
+                                placeholder="Dán liên kết ảnh nền (https://...)"
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-mono focus:outline-none focus:border-indigo-500"
+                              />
                             </div>
                           </div>
 

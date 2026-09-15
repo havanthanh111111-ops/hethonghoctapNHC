@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Trash2, Image as ImageIcon, Wifi, WifiOff, RefreshCw, ChevronDown, Eye, AlertCircle, Home, BookOpen, Clock, CheckCircle2, Bold, Italic, List, Table as TableIcon, Link, Type, Palette, AlignLeft, AlignCenter, AlignRight, AlignJustify, Heading3, Calculator, X, Search, Edit2, Users } from 'lucide-react';
+import { Send, Trash2, Image as ImageIcon, Wifi, WifiOff, RefreshCw, ChevronDown, Eye, AlertCircle, Home, BookOpen, Clock, CheckCircle2, Bold, Italic, List, Table as TableIcon, Link, Type, Palette, AlignLeft, AlignCenter, AlignRight, AlignJustify, Heading3, Calculator, X, Search, Edit2, Users, Lock, ShieldAlert, Info, ShieldCheck, Check, Globe, Sparkles, Filter } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -89,7 +89,9 @@ const HomeworkPanel: React.FC<HomeworkPanelProps> = ({ nodeId, student, isAdmin,
   const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(null);
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [approvalFilter, setApprovalFilter] = useState<'all' | 'pending' | 'approved'>('all');
   
+  const isGuest = !isAdmin && (!student || student.is_guest === true || student.name === 'Khách');
   const homeworkNodeId = `homework_${nodeId}`;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -182,6 +184,18 @@ const HomeworkPanel: React.FC<HomeworkPanelProps> = ({ nodeId, student, isAdmin,
                     item.is_admin === true || 
                     item.is_admin === 'true' || 
                     item.author === 'Giáo viên',
+            // Robust isApproved detection
+            isApproved: item.isAdmin === true || 
+                       item.isAdmin === 'true' || 
+                       item.is_admin === true || 
+                       item.is_admin === 'true' || 
+                       item.author === 'Giáo viên' ||
+                       item.isApproved === true || 
+                       item.isApproved === 'true' || 
+                       item.is_approved === true || 
+                       item.is_approved === 'true' ||
+                       item.isApproved === 1 || 
+                       item.is_approved === 1,
           }))
           .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
         
@@ -224,6 +238,10 @@ const HomeworkPanel: React.FC<HomeworkPanelProps> = ({ nodeId, student, isAdmin,
   };
 
   const handleSubmit = async () => {
+    if (isGuest) {
+      alert("Chức năng nộp bài/trả lời đã được đóng băng cho khách vãng lai để quản lý tập trung. Vui lòng đăng nhập tài khoản học sinh.");
+      return;
+    }
     if (!content.trim() && !selectedFile) return;
     setLoading(true);
 
@@ -247,6 +265,8 @@ const HomeworkPanel: React.FC<HomeworkPanelProps> = ({ nodeId, student, isAdmin,
       image_url: imageUrl,
       isAdmin, 
       is_admin: isAdmin,
+      isApproved: isAdmin ? true : false,
+      is_approved: isAdmin ? true : false,
       createdAt,
       created_at: createdAt,
       grade_id: gradeId,
@@ -273,10 +293,10 @@ const HomeworkPanel: React.FC<HomeworkPanelProps> = ({ nodeId, student, isAdmin,
         
         if (result.error) {
           console.error("Insert error, retrying with fallback:", result.error);
-          const fallback1 = { nodeId: targetNodeId, author: authorName, content, imageUrl, isAdmin, createdAt, grade_id: gradeId };
+          const fallback1 = { nodeId: targetNodeId, author: authorName, content, imageUrl, isAdmin, createdAt, grade_id: gradeId, is_approved: isAdmin };
           result = await supabase.from('forum_comments').insert([fallback1]);
           if (result.error) {
-            const fallback2 = { node_id: targetNodeId, author: authorName, content, image_url: imageUrl, is_admin: isAdmin, created_at: createdAt, grade_id: gradeId };
+            const fallback2 = { node_id: targetNodeId, author: authorName, content, image_url: imageUrl, is_admin: isAdmin, created_at: createdAt, grade_id: gradeId, is_approved: isAdmin };
             result = await supabase.from('forum_comments').insert([fallback2]);
             if (result.error) {
               const fallback3 = { node_id: targetNodeId, author: authorName, content, image_url: imageUrl, is_admin: isAdmin };
@@ -301,6 +321,68 @@ const HomeworkPanel: React.FC<HomeworkPanelProps> = ({ nodeId, student, isAdmin,
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleToggleApproval = async (id: string, currentStatus?: boolean) => {
+    if (!isAdmin) return;
+    const newStatus = !currentStatus;
+    
+    // Optimistic UI update
+    setComments(prev => prev.map(c => c.id === id ? { ...c, isApproved: newStatus } : c));
+    
+    try {
+      let { error } = await supabase
+        .from('forum_comments')
+        .update({ is_approved: newStatus, isApproved: newStatus })
+        .eq('id', id);
+
+      if (error) {
+        // Fallback update try single col
+        const fallback1 = await supabase.from('forum_comments').update({ is_approved: newStatus }).eq('id', id);
+        if (fallback1.error) {
+          await supabase.from('forum_comments').update({ isApproved: newStatus }).eq('id', id);
+        }
+      }
+    } catch (err: any) {
+      console.error("Error toggling approval:", err);
+    }
+  };
+
+  const handleBatchApprove = async (qId?: string) => {
+    if (!isAdmin) return;
+    const targetList = (qId ? getAnswersForQuestion(qId) : answers).filter(a => !a.isApproved);
+    if (targetList.length === 0) {
+      alert("Tất cả các bài nộp này đã được duyệt công khai!");
+      return;
+    }
+
+    setConfirmConfig({
+      isOpen: true,
+      title: "Duyệt tất cả bài nộp",
+      message: `Duyệt công khai ${targetList.length} bài làm của học sinh để hiển thị lên web?`,
+      onConfirm: async () => {
+        setLoading(true);
+        try {
+          const ids = targetList.map(a => a.id);
+          // Optimistic update
+          setComments(prev => prev.map(c => ids.includes(c.id) ? { ...c, isApproved: true } : c));
+
+          const { error } = await supabase
+            .from('forum_comments')
+            .update({ is_approved: true, isApproved: true })
+            .in('id', ids);
+
+          if (error) {
+            await supabase.from('forum_comments').update({ is_approved: true }).in('id', ids);
+          }
+        } catch (err: any) {
+          console.error("Batch approval error:", err);
+          alert("Lỗi duyệt bài: " + err.message);
+        } finally {
+          setLoading(false);
+        }
+      }
+    });
   };
 
   const handleDelete = async (id: string) => {
@@ -560,20 +642,39 @@ const HomeworkPanel: React.FC<HomeworkPanelProps> = ({ nodeId, student, isAdmin,
       {/* STUDENT MISSION LIST VIEW */}
       {!isAdmin && (
         <div className="space-y-8">
+           {/* GUEST MODE NOTICE BANNER */}
+           {isGuest && (
+             <div className="bg-amber-50/90 border border-amber-200 rounded-[28px] p-5 md:p-6 flex items-start gap-4 shadow-sm animate-in fade-in duration-300">
+               <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-amber-200 mt-0.5">
+                 <Lock size={18} />
+               </div>
+               <div className="space-y-1">
+                 <div className="flex items-center gap-2">
+                   <h4 className="text-xs font-black uppercase text-amber-900 tracking-wider">
+                     Chế độ Xem Khách Vãng Lai &bull; Nút Trả Lời Đã Đóng Băng
+                   </h4>
+                 </div>
+                 <p className="text-[11px] text-amber-800 font-medium leading-relaxed">
+                   Để phục vụ <strong>quản lý tập trung</strong> và chấm điểm chính xác theo danh sách học sinh của nhà trường, nút trả lời/nộp bài đã được <strong>đóng băng</strong> đối với khách vãng lai. Học sinh vui lòng đăng nhập tài khoản chính thức để nộp bài làm.
+                 </p>
+               </div>
+             </div>
+           )}
+
            {questions.length === 0 ? (
              <div className="bg-white p-16 rounded-[48px] border-2 border-dashed border-slate-200 text-center">
                 <div className="w-20 h-20 bg-slate-50 rounded-[32px] flex items-center justify-center mx-auto mb-6">
                    <BookOpen size={40} className="text-slate-200" />
                 </div>
                 <p className="text-slate-400 font-black uppercase text-xs tracking-widest leading-relaxed">
-                   Chào {student?.full_name || student?.name},<br/> hiện chưa có nhiệm vụ nào được giao cho bài học này.
+                   Chào {isGuest ? 'bạn (Khách vãng lai)' : (student?.full_name || student?.name)},<br/> hiện chưa có nhiệm vụ nào được giao cho bài học này.
                 </p>
              </div>
            ) : (
              <div className="space-y-12">
                 {questions.map((q, idx) => {
-                  const myAnswer = getMyAnswerForQuestion(q.id);
-                  const isReplying = replyingToId === q.id;
+                  const myAnswer = isGuest ? null : getMyAnswerForQuestion(q.id);
+                  const isReplying = isGuest ? false : replyingToId === q.id;
 
                   return (
                     <div key={q.id} className="space-y-6">
@@ -594,19 +695,36 @@ const HomeworkPanel: React.FC<HomeworkPanelProps> = ({ nodeId, student, isAdmin,
                                    </div>
                                 </div>
                                 
-                                {!myAnswer && !isReplying && (
-                                   <button 
-                                     onClick={() => { setReplyingToId(q.id); setContent(''); }}
-                                     className="px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-amber-100 flex items-center gap-2 group"
-                                   >
-                                      <Send size={14} className="group-hover:translate-x-1 transition-all" /> Trả lời
-                                   </button>
-                                )}
-                                
-                                {myAnswer && !isReplying && (
-                                   <div className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2">
-                                      <CheckCircle2 size={14} /> Đã hoàn thành
+                                {isGuest ? (
+                                   <div className="flex items-center gap-2">
+                                      <button 
+                                        type="button"
+                                        disabled
+                                        className="px-5 py-3 bg-slate-100/90 border border-slate-200 text-slate-400 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 select-none cursor-not-allowed shadow-inner"
+                                        title="Nút trả lời đã đóng băng cho khách vãng lai. Vui lòng đăng nhập tài khoản Học sinh để nộp bài."
+                                      >
+                                         <Lock size={14} className="text-slate-400" />
+                                         <span>Trả lời</span>
+                                         <span className="text-[8px] bg-slate-200/90 text-slate-500 px-2 py-0.5 rounded-full font-bold">Đóng băng</span>
+                                      </button>
                                    </div>
+                                ) : (
+                                   <>
+                                     {!myAnswer && !isReplying && (
+                                        <button 
+                                          onClick={() => { setReplyingToId(q.id); setContent(''); }}
+                                          className="px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-amber-100 flex items-center gap-2 group"
+                                        >
+                                           <Send size={14} className="group-hover:translate-x-1 transition-all" /> Trả lời
+                                        </button>
+                                     )}
+                                     
+                                     {myAnswer && !isReplying && (
+                                        <div className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2">
+                                           <CheckCircle2 size={14} /> Đã hoàn thành
+                                        </div>
+                                     )}
+                                   </>
                                 )}
                              </div>
 
@@ -625,11 +743,26 @@ const HomeworkPanel: React.FC<HomeworkPanelProps> = ({ nodeId, student, isAdmin,
                              {/* STUDENT ANSWER (IF EXISTS) */}
                              {myAnswer && !isReplying && (
                                 <div className="mt-8 pt-8 border-t border-slate-100 space-y-4">
-                                   <div className="flex items-center gap-3 mb-2">
-                                      <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-[10px] font-black shadow-lg shadow-emerald-50">
-                                         EM
+                                   <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+                                      <div className="flex items-center gap-3">
+                                         <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-[10px] font-black shadow-lg shadow-emerald-50">
+                                            EM
+                                         </div>
+                                         <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Nội dung em đã trả lời</p>
                                       </div>
-                                      <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Nội dung em đã trả lời</p>
+
+                                      {/* APPROVAL BADGE */}
+                                      {myAnswer.isApproved ? (
+                                         <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-100 text-emerald-800 rounded-xl text-[9px] font-black uppercase tracking-wider border border-emerald-200 shadow-sm">
+                                            <CheckCircle2 size={13} className="text-emerald-600" />
+                                            <span>Đã được Giáo viên duyệt & hiển thị công khai</span>
+                                         </div>
+                                      ) : (
+                                         <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-100 text-amber-800 rounded-xl text-[9px] font-black uppercase tracking-wider border border-amber-200 shadow-sm">
+                                            <Clock size={13} className="text-amber-600 animate-pulse" />
+                                            <span>Đã nộp bài &bull; Chờ Giáo viên duyệt để hiển thị công khai</span>
+                                         </div>
+                                      )}
                                    </div>
                                    <div className="bg-emerald-50/50 p-6 rounded-3xl border border-emerald-100/50 prose prose-emerald max-w-none prose-sm text-emerald-900 font-bold italic leading-relaxed">
                                       <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
@@ -649,6 +782,86 @@ const HomeworkPanel: React.FC<HomeworkPanelProps> = ({ nodeId, student, isAdmin,
                                    </button>
                                 </div>
                              )}
+
+                             {/* PUBLIC APPROVED ANSWERS SHOWCASE */}
+                             {(() => {
+                               const approvedAnswers = getAnswersForQuestion(q.id).filter(a => a.isApproved);
+                               return (
+                                 <div className="mt-8 pt-8 border-t border-slate-100 space-y-4">
+                                   <div className="flex flex-wrap items-center justify-between gap-3">
+                                     <div className="flex items-center gap-2">
+                                       <div className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                                         <Globe size={13} />
+                                       </div>
+                                       <h5 className="text-[11px] font-black text-slate-700 uppercase tracking-wider">
+                                         Bài làm tiêu biểu đã được Giáo viên duyệt ({approvedAnswers.length})
+                                       </h5>
+                                     </div>
+                                     {approvedAnswers.length > 0 && (
+                                       <span className="text-[8.5px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 flex items-center gap-1">
+                                         <ShieldCheck size={11} /> Đã kiểm duyệt công khai
+                                       </span>
+                                     )}
+                                   </div>
+
+                                   {approvedAnswers.length > 0 ? (
+                                     <div className="space-y-4">
+                                       {approvedAnswers.map(ans => {
+                                         const isMine = student && ans.author.includes(`[${student.name}]`);
+                                         return (
+                                           <div 
+                                             key={ans.id} 
+                                             className={`p-6 rounded-3xl border transition-all ${
+                                               isMine 
+                                                 ? 'bg-emerald-50/40 border-emerald-200 shadow-sm' 
+                                                 : 'bg-slate-50/70 border-slate-100 hover:border-emerald-200 hover:bg-white shadow-sm'
+                                             }`}
+                                           >
+                                             <div className="flex items-center justify-between mb-3">
+                                               <div className="flex items-center gap-3">
+                                                 <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-[10px] font-black shadow-sm">
+                                                   {ans.author.split(']').pop()?.trim().split(' ').pop()?.charAt(0).toUpperCase() || 'S'}
+                                                 </div>
+                                                 <div>
+                                                   <p className="text-[11px] font-black text-slate-800 flex items-center gap-2">
+                                                     {ans.author}
+                                                     {isMine && <span className="text-[8px] bg-emerald-600 text-white px-2 py-0.5 rounded-full uppercase">Bài của em</span>}
+                                                   </p>
+                                                   <p className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tight">
+                                                     {new Date(ans.createdAt).toLocaleString('vi-VN')}
+                                                   </p>
+                                                 </div>
+                                               </div>
+                                               <div className="flex items-center gap-1 text-[8.5px] font-black text-emerald-700 bg-emerald-100/80 px-2.5 py-1 rounded-xl">
+                                                 <CheckCircle2 size={11} /> Đã duyệt công khai
+                                               </div>
+                                             </div>
+
+                                             <div className="prose prose-slate max-w-none text-slate-700 text-sm font-medium leading-relaxed">
+                                               <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]} rehypePlugins={[rehypeRaw, rehypeKatex]}>
+                                                 {ans.content}
+                                               </ReactMarkdown>
+                                             </div>
+                                             {ans.imageUrl && (
+                                               <div className="mt-4 rounded-2xl overflow-hidden border border-slate-200 max-w-md">
+                                                 <img src={ans.imageUrl} className="w-full h-auto" />
+                                               </div>
+                                             )}
+                                           </div>
+                                         );
+                                       })}
+                                     </div>
+                                   ) : (
+                                     <div className="bg-slate-50/60 border border-dashed border-slate-200 rounded-2xl p-4 flex items-center gap-3 text-slate-400">
+                                       <Info size={16} className="shrink-0 text-slate-400" />
+                                       <p className="text-[10px] font-medium leading-relaxed">
+                                         Chưa có bài viết nào được giáo viên duyệt công khai cho nhiệm vụ này. Để đảm bảo chất lượng và tránh tình trạng bài viết tràn lan, bài làm của học sinh sẽ hiển thị tại đây sau khi được giáo viên duyệt.
+                                       </p>
+                                     </div>
+                                   )}
+                                 </div>
+                               );
+                             })()}
                           </div>
 
                           {/* INLINE EDITOR FOR REPLIES */}
