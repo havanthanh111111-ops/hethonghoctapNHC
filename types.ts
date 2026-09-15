@@ -1,79 +1,153 @@
 
-export type NodeType = 'folder' | 'lesson';
+export type Role = 'admin' | 'student';
+export type Grade = '10' | '11' | '12' | 'all';
+export type QuizType = 'practice' | 'test';
+export type QuestionType = 'mcq' | 'group-tf' | 'short';
+export type QuestionLevel = 'B' | 'H' | 'VD' | 'VDC';
 
-export interface ResourceLink {
-  id: string;
-  title: string;
-  url: string;
-}
-
-export interface ForumComment {
-  id: string;
-  nodeId: string;
-  author: string;
-  content: string;
-  imageUrl?: string;
-  createdAt: string;
-  isAdmin: boolean;
-  isApproved?: boolean;
-}
-
-export interface BookNode {
-  id: string;
-  title: string;
-  type: NodeType;
-  url: string;
-  imageUrl?: string;
-  parentId: string | null;
-  lessonResources: ResourceLink[];
-  order: number;
-}
-
-export interface AppData {
-  nodes: BookNode[];
-  globalResources: ResourceLink[];
-  homeUrl?: string; // Link trang chào mừng/trang chủ
-}
-
-export interface Flashcard {
-  id: string;
-  nodeId: string;
-  front: string;
-  back: string;
+export interface ClassRoom {
+  id: string; // e.g. "class_12a1_2026" or uuid
+  name: string; // e.g. "12A1", "11A2", "10A1", "Lớp Nâng Cao"
+  academicYear: string; // e.g. "2025-2026", "2026-2027", "2026"
+  grade: Grade; // '10' | '11' | '12' | 'all'
+  description?: string; // Ghi chú, giáo viên phụ trách, phân loại trình độ
   createdAt?: string;
 }
 
-export interface Student {
+export interface User {
   id: string;
+  username: string;
+  password: string;
+  role: Role;
+  fullName: string;
+  studentCode?: string; 
+  grade?: Grade;
+  points?: number;
+  // Thông tin Lớp học & Niên khóa (có thể thay đổi qua các năm mà không đổi tài khoản)
+  classId?: string; 
+  className?: string; 
+  academicYear?: string;
+}
+
+export interface Chapter {
+  id: string;
+  grade: Grade;
   name: string;
-  full_name?: string;
-  password?: string;
-  grade_id: number;
-  is_guest?: boolean;
+  order: number;
 }
 
-export interface StudyLog {
+export interface QuizFolder {
   id: string;
-  student_id: string;
-  node_id: string;
-  type: 'material' | 'flashcard' | 'quiz';
-  duration: number; // in seconds
-  created_at: string;
+  name: string; // e.g. "Đề củng cố Bài học", "Đề ôn chương", "Đề tổng hợp"
+  chapterId?: string; // ID của chương chứa folder
+  chapterName: string; // Tên chương (e.g. "Chương 1: Vật lý nhiệt")
+  grade: Grade; // '10' | '11' | '12' | 'all'
+  color?: 'amber' | 'blue' | 'emerald' | 'purple' | 'rose' | 'indigo' | 'cyan' | string;
+  order?: number;
+  description?: string;
+  createdAt?: string;
 }
 
-export interface LessonTask {
+export interface SubQuestion {
   id: string;
-  nodeId: string;
+  text: string;
+  correctAnswer: 'True' | 'False';
+  level?: QuestionLevel;
+}
+
+export interface Question {
+  id: string;
+  bankOriginId?: string; // ID gốc của câu hỏi trong Ngân hàng (nếu được lấy từ Ngân hàng)
+  type: QuestionType;
+  context?: string; // Lời dẫn / Dữ liệu dùng chung cho chùm câu hỏi (VD: "Dữ liệu dùng chung cho câu 3 và câu 4...")
+  text: string;
+  points: number | string;
+  level?: QuestionLevel;
+  imageUrl?: string;
+  solution?: string; 
+  options?: string[]; 
+  correctAnswer?: string; 
+  subQuestions?: SubQuestion[];
+  quizTitle?: string;
+  quizGrade?: Grade;
+  quizCategory?: string;
+  chapterId?: string;
+  chapterName?: string;
+}
+
+export interface Quiz {
+  id: string;
+  title: string;
   description: string;
-  minMaterialTime: number; // minutes
-  minFlashcardTime: number; // minutes
-  minQuizTime: number; // minutes
+  type: QuizType;
+  grade: Grade;
+  academicYear?: string; // Niên khóa / Năm học (ví dụ: "2025-2026")
+  category?: string; 
+  folderId?: string; // ID của Thư mục chứa đề này (nằm trong Chương)
+  folderName?: string; // Tên Thư mục (e.g. "Đề củng cố Bài học", "Đề ôn chương")
+  startTime?: string;
+  endTime?: string; 
+  durationMinutes: number;
+  questions: Question[];
+  questionCount?: number; 
+  attemptCount?: number;
   createdAt: string;
+  isPublished: boolean;
+  isMonitored?: boolean;
+  isUnlisted?: boolean; 
+  isSyncedToBank?: boolean; // Cờ đánh dấu đề thi đã được quét và đồng bộ vào Ngân hàng câu hỏi
+  syncedToBankAt?: string; // Thời điểm đồng bộ vào Ngân hàng
+  orderIndex?: number; // Thứ tự trong chương
+  // Phân quyền giao đề theo Lớp học & Niên khóa
+  targetType?: 'all' | 'classes'; // 'all' (tất cả hs cùng khối) | 'classes' (chỉ giao cho các lớp chỉ định)
+  assignedClassIds?: string[]; // IDs của các lớp được giao đề
+  assignedClasses?: { id: string; name: string; academicYear?: string }[]; // Thông tin chi tiết lớp để hiển thị nhanh
+  maxAttempts?: number; // Số lần làm bài tối đa (mặc định là 2 cho đề thi)
+  allowReview?: boolean; // Cho phép học sinh xem lại đáp án & lời giải chi tiết (Mặc định: BẬT cho Luyện tập, TẮT cho Đề thi nếu GV chưa mở)
 }
 
-export interface QuizQuestion {
-  question: string;
-  options: string[];
-  correctIndex: number;
-  explanation: string;
+export interface Result {
+  id: string;
+  quizId: string;
+  studentId: string;
+  studentName: string;
+  studentCode?: string; 
+  academicYear?: string;
+  score: number;
+  totalQuestions: number;
+  submittedAt: string;
+  durationSeconds: number;
+  detailScores?: number[];
+  pointsAwarded?: number;
+  bonusPoint?: number; 
+  userAnswers?: Record<string, any>; 
+  violationCount?: number;
+  questionOrder?: string[]; // Ghi nhớ thứ tự ID câu hỏi đã xáo trộn riêng cho lượt làm bài này
+}
+
+export interface ExamSession {
+  id: string;
+  quizId: string;
+  quizTitle: string;
+  studentId: string;
+  studentName: string;
+  studentCode: string;
+  startTime: string;
+  lastUpdate: string;
+  violationCount: number;
+  isFinished: boolean;
+}
+
+export interface PublishedResult {
+  id: string;
+  quizId: string;
+  quizTitle: string;
+  publishedAt: string;
+  studentCodes: string[];
+  results: Result[];
+}
+
+export interface AuthState {
+  user: User | null;
+  isAuthenticated: boolean;
 }

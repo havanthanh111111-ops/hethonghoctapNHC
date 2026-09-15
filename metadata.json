@@ -1,6 +1,6 @@
 {
-  "name": "Website học tập",
-  "description": "Nền tảng học tập 3 bảng giúp giáo viên tổ chức học liệu, flashcard và quản lý tiến độ học tập của học sinh thông qua nhiệm vụ có kiểm soát thời gian.",
+  "name": "EduQuiz VN",
+  "description": "Nền tảng thi trắc nghiệm trực tuyến dành cho học sinh THPT (Lớp 10, 11, 12) với sự hỗ trợ của AI và chế độ khung giờ mở đề linh hoạt.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
