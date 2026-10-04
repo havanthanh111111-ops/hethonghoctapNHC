@@ -226,38 +226,47 @@ export const VdcQuestionsPanel: React.FC<VdcQuestionsPanelProps> = ({
     }
   };
 
-  // Lấy danh sách các chương (Folders) từ cấu trúc sách hiện tại
+  // Lấy danh sách các chương (Folders) từ cấu trúc sách + danh sách thủ công trong chapterOrder
   const chaptersList = useMemo(() => {
     const list: { id: string; title: string; fromNode?: boolean }[] = [];
     const seen = new Set<string>();
     const deletedSet = new Set(deletedChapters.map(t => t.trim().toLowerCase()));
 
-    // 1. Thêm từ các node folder gốc trong sách
+    const addTitle = (title: string, id?: string, fromNode = false) => {
+      const clean = title?.trim();
+      if (!clean) return;
+      const lower = clean.toLowerCase();
+      if (!seen.has(lower) && !deletedSet.has(lower)) {
+        seen.add(lower);
+        list.push({ id: id || `custom-${clean}`, title: clean, fromNode });
+      }
+    };
+
+    // 1. Thêm các chương trong chapterOrder (đảm bảo các chương tự tạo luôn xuất hiện dù có 0 câu hỏi)
+    chapterOrder.forEach(title => {
+      addTitle(title);
+    });
+
+    // 2. Thêm từ các node folder gốc trong sách bài giảng
     (nodes || [])
       .filter(n => n.type === 'folder' && (n.parentId === null || n.parentId === undefined))
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       .forEach(f => {
-        const clean = f.title.trim();
-        if (!seen.has(clean.toLowerCase()) && !deletedSet.has(clean.toLowerCase())) {
-          seen.add(clean.toLowerCase());
-          list.push({ id: f.id, title: clean, fromNode: true });
-        }
+        addTitle(f.title, f.id, true);
       });
 
-    // 2. Thêm bất kỳ chương nào đã có trong danh sách câu hỏi
+    // 3. Thêm bất kỳ chương nào đã có trong danh sách câu hỏi
     questions.forEach(q => {
-      const title = q.chapter_title?.trim();
-      if (title && !seen.has(title.toLowerCase()) && !deletedSet.has(title.toLowerCase())) {
-        seen.add(title.toLowerCase());
-        list.push({ id: q.chapter_id || `custom-${title}`, title, fromNode: false });
+      if (q.chapter_title) {
+        addTitle(q.chapter_title, q.chapter_id);
       }
     });
 
-    // 3. Sắp xếp danh sách chương theo chapterOrder nếu có
+    // 4. Sắp xếp danh sách chương theo chapterOrder nếu có
     if (chapterOrder.length > 0) {
       list.sort((a, b) => {
-        const idxA = chapterOrder.indexOf(a.title.trim());
-        const idxB = chapterOrder.indexOf(b.title.trim());
+        const idxA = chapterOrder.findIndex(t => t.trim().toLowerCase() === a.title.trim().toLowerCase());
+        const idxB = chapterOrder.findIndex(t => t.trim().toLowerCase() === b.title.trim().toLowerCase());
         if (idxA !== -1 && idxB !== -1) return idxA - idxB;
         if (idxA !== -1) return -1;
         if (idxB !== -1) return 1;
@@ -436,11 +445,22 @@ export const VdcQuestionsPanel: React.FC<VdcQuestionsPanelProps> = ({
       localStorage.setItem(`vdc_deleted_chapters_g${gradeId}`, JSON.stringify(updatedDeleted));
 
       // 2. Thêm vào chapterOrder
-      const updatedOrder = [...chapterOrder.filter(t => t.trim().toLowerCase() !== titleToAdd.toLowerCase()), titleToAdd];
+      const updatedOrder = Array.from(new Set([...chapterOrder.filter(t => t.trim().toLowerCase() !== titleToAdd.toLowerCase()), titleToAdd]));
       setChapterOrder(updatedOrder);
       localStorage.setItem(`vdc_chapter_order_g${gradeId}`, JSON.stringify(updatedOrder));
 
-      // 3. Chọn ngay chương vừa thêm
+      // 3. Đồng bộ lên CSDL Supabase để bảo tồn vĩnh viễn trên đám mây
+      await supabase.from('app_settings').upsert({
+        id: 8000 + gradeId,
+        data: {
+          questions,
+          chapter_order: updatedOrder,
+          deleted_chapters: updatedDeleted,
+          updated_at: new Date().toISOString()
+        }
+      });
+
+      // 4. Chọn ngay chương vừa thêm
       setSelectedChapter(titleToAdd);
       setShowAddChapterModal(false);
       setNewChapterTitle('');
