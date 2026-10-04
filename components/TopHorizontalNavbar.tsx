@@ -20,6 +20,8 @@ interface TopHorizontalNavbarProps {
   onLogout: () => void;
   searchTerm: string;
   setSearchTerm: (term: string) => void;
+  isVdcMode?: boolean;
+  onToggleVdc?: () => void;
 }
 
 interface DropdownTreeItemProps {
@@ -258,7 +260,9 @@ export const TopHorizontalNavbar: React.FC<TopHorizontalNavbarProps> = ({
   onMoveNode,
   onLogout,
   searchTerm,
-  setSearchTerm
+  setSearchTerm,
+  isVdcMode,
+  onToggleVdc
 }) => {
   const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
@@ -434,6 +438,20 @@ export const TopHorizontalNavbar: React.FC<TopHorizontalNavbarProps> = ({
           >
             <Home size={16} />
           </button>
+          {onToggleVdc && (
+            <button
+              onClick={onToggleVdc}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shrink-0 shadow-xs active:scale-95 ${
+                isVdcMode
+                  ? 'bg-gradient-to-r from-amber-500 to-rose-600 text-white shadow-md shadow-rose-200'
+                  : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200'
+              }`}
+              title="Kho câu hỏi VDC & Tuyển tập hay"
+            >
+              <Sparkles size={14} className={isVdcMode ? 'text-amber-200 fill-amber-200' : 'text-amber-600 fill-amber-500'} />
+              <span>KHO VDC 9+</span>
+            </button>
+          )}
           <div className="hidden sm:block">
             <h1 className="text-xs font-black text-slate-900 uppercase tracking-wider truncate max-w-[150px] md:max-w-[200px]">
               {currentSubject?.label || 'MÔN HỌC'}
