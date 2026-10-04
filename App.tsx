@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
-import { Book, Plus, Maximize2, Loader2, BrainCircuit, GraduationCap, ShieldCheck, Search, LogOut, Folder, Globe, Zap, Image as ImageIcon, Settings, ArrowLeft, ArrowRight, Upload, AlertCircle, Users, Share2 } from 'lucide-react';
+import { Book, Plus, Maximize2, Loader2, BrainCircuit, GraduationCap, ShieldCheck, Search, LogOut, Folder, Globe, Zap, Image as ImageIcon, Settings, ArrowLeft, ArrowRight, Upload, AlertCircle, Users, Share2, Sparkles } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { AppData, ResourceLink, BookNode, NodeType, Student, Subject } from './types';
 import { INITIAL_DATA } from './constants';
@@ -19,6 +19,7 @@ import { SuperAdminView } from './components/SuperAdminView';
 import { TopHorizontalNavbar } from './components/TopHorizontalNavbar';
 import ConfirmModal from './components/ConfirmModal';
 import { DriveUploader } from './components/DriveUploader';
+import { VdcQuestionsPanel } from './components/VdcQuestionsPanel';
 
 import { getSafeEnv, SLOGANS } from './utils';
 
@@ -746,6 +747,7 @@ const MainView: React.FC<{
   const [iframeLoading, setIframeLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'content' | 'tasks' | 'flashcards' | 'homework'>('content');
   const [showStudentManager, setShowStudentManager] = useState(false);
+  const [isVdcMode, setIsVdcMode] = useState(false);
   const [sloganIdx, setSloganIdx] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [isQuizOpen, setIsQuizOpen] = useState(false);
@@ -1217,6 +1219,7 @@ const MainView: React.FC<{
 
   const handleSelectNode = (id: string | null) => {
     setSelectedId(id);
+    setIsVdcMode(false);
     if (id) {
       localStorage.setItem(`selected_id_${selectedGrade}`, id);
       if ((data?.nodes || []).find(n => n.id === id)?.url) setIframeLoading(true);
@@ -1260,6 +1263,8 @@ const MainView: React.FC<{
           }}
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
+          isVdcMode={isVdcMode}
+          onToggleVdc={() => setIsVdcMode(prev => !prev)}
         />
       )}
 
@@ -1305,6 +1310,26 @@ const MainView: React.FC<{
           </div>
         </div>
 
+        <div className="px-3 pb-1 shrink-0 bg-[#fbfcfd]">
+          <button
+            onClick={() => setIsVdcMode(prev => !prev)}
+            className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-between shadow-xs active:scale-98 ${
+              isVdcMode
+                ? 'bg-gradient-to-r from-amber-500 to-rose-600 text-white shadow-md shadow-rose-200'
+                : 'bg-gradient-to-r from-amber-50 to-rose-50 text-amber-900 border border-amber-200 hover:from-amber-100 hover:to-rose-100'
+            }`}
+            title="Mở kho câu hỏi Vận Dụng Cao & Lời giải chi tiết"
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles size={15} className={isVdcMode ? 'text-amber-200 fill-amber-200' : 'text-amber-600 fill-amber-500'} />
+              <span className="uppercase tracking-tight text-[11px]">KHO VDC 9+</span>
+            </div>
+            <span className={`px-1.5 py-0.5 rounded-md text-[8px] font-extrabold uppercase ${isVdcMode ? 'bg-white/20 text-white' : 'bg-amber-200 text-amber-900'}`}>
+              CÂU HỎI
+            </span>
+          </button>
+        </div>
+
         <div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-[#fbfcfd]">
           {filteredRootNodes.map(node=>(
             <TreeItem key={node.id} node={node} allNodes={data?.nodes || []} selectedId={selectedId} isAdmin={isAdmin} level={0}
@@ -1347,7 +1372,7 @@ const MainView: React.FC<{
       )}
 
       {/* PANEL 3: RESOURCES (Leftmost side in Layout 2) */}
-      {activeLayout === 'layout2' && (
+      {activeLayout === 'layout2' && !isVdcMode && (
         <ResourcesPanel 
           isAdmin={isAdmin} 
           selectedId={selectedId} 
@@ -1382,7 +1407,26 @@ const MainView: React.FC<{
             </button>
           </div>
         )}
-        {selectedId ? (
+        {isVdcMode ? (
+          <VdcQuestionsPanel
+            isAdmin={isAdmin}
+            selectedGrade={selectedGrade}
+            nodes={data?.nodes || []}
+            themeColor={themeColor}
+            onBackToLessons={() => setIsVdcMode(false)}
+            showToast={(msg) => {
+              alert(msg);
+            }}
+            showConfirm={(title, msg, onConfirm) => {
+              setConfirmConfig({
+                isOpen: true,
+                title,
+                message: msg,
+                onConfirm
+              });
+            }}
+          />
+        ) : selectedId ? (
           <>
             {selectedNode?.type === 'folder' ? (
               <FolderSummary 
@@ -1583,7 +1627,7 @@ const MainView: React.FC<{
       </main>
 
       {/* PANEL 3: RESOURCES (Right side in Layout 1 & 3) */}
-      {(activeLayout === 'layout1' || activeLayout === 'layout3') && (
+      {(activeLayout === 'layout1' || activeLayout === 'layout3') && !isVdcMode && (
         <ResourcesPanel 
           isAdmin={isAdmin} 
           selectedId={selectedId} 
