@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Sparkles, 
   Search, 
@@ -21,6 +21,7 @@ import {
   CheckCircle2, 
   HelpCircle, 
   Maximize2, 
+  Minimize2,
   X, 
   Upload, 
   Cloud, 
@@ -30,14 +31,169 @@ import {
   ArrowUp,
   ArrowDown,
   RotateCcw,
-  Menu
+  Menu,
+  Bold,
+  Italic,
+  Underline,
+  Heading2,
+  Heading3,
+  List,
+  ListOrdered,
+  Table as TableIcon,
+  Calculator,
+  Image as ImageIcon,
+  Columns2,
+  Quote,
+  Type,
+  Palette,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  Code
 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import remarkBreaks from 'remark-breaks';
+import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
 import { VdcQuestion, BookNode } from '../types';
 import { SAMPLE_VDC_QUESTIONS } from '../sampleVdcData';
 import { supabase } from '../supabaseClient';
 import { renderLatex } from '../utils';
 import { uploadToImgBB } from '../imgbb';
 import { uploadFileToGoogleDrive, signInWithGoogleForDrive, getDriveAccessToken } from '../googleDrive';
+import { ImageUploadModal } from './ImageUploadModal';
+
+const MATH_FORMULAS = [
+  { label: 'PHÂN SỐ', display: 'a/b', value: '$\\frac{a}{b}$' },
+  { label: 'CĂN BẬC 2', display: '√x', value: '$\\sqrt{x}$' },
+  { label: 'CĂN BẬC N', display: 'ⁿ√x', value: '$\\sqrt[n]{x}$' },
+  { label: 'MŨ', display: 'xⁿ', value: '$x^{n}$' },
+  { label: 'CHỈ SỐ DƯỚI', display: 'xi', value: '$x_{i}$' },
+  { label: 'VECTOR', display: '→v', value: '$\\vec{v}$' },
+  { label: 'LỰC VECTOR', display: '→F', value: '$\\vec{F}$' },
+  { label: 'TẦN SỐ GÓC', display: 'ω', value: '$\\omega$' },
+  { label: 'BƯỚC SÓNG', display: 'λ', value: '$\\lambda$' },
+  { label: 'PHA DAO ĐỘNG', display: 'φ', value: '$\\varphi$' },
+  { label: 'GÓC ALPHA', display: 'α', value: '$\\alpha$' },
+  { label: 'SỐ PI', display: 'π', value: '$\\pi$' },
+  { label: 'DELTA (Δ)', display: 'Δt', value: '$\\Delta t$' },
+  { label: 'DAO ĐỘNG', display: 'x(t)', value: '$x = A\\cos(\\omega t + \\varphi)$' },
+  { label: 'VẬN TỐC', display: 'v(x)', value: '$v = \\pm\\omega\\sqrt{A^2 - x^2}$' },
+  { label: 'HỆ PHƯƠNG TRÌNH', display: '{', value: '$\\begin{cases} x =  \\\\ y =  \\end{cases}$' },
+  { label: 'TỔNG (Σ)', display: 'Σ', value: '$\\sum_{i=1}^{n}$' },
+  { label: 'TÍCH PHÂN (∫)', display: '∫', value: '$\\int_{a}^{b}$' },
+  { label: 'GIỚI HẠN (LIM)', display: 'lim', value: '$\\lim_{x \\to \\infty}$' },
+  { label: 'ĐƠN VỊ VẬN TỐC', display: 'm/s', value: '$\\text{m/s}$' },
+  { label: 'GIA TỐC', display: 'm/s²', value: '$\\text{m/s}^2$' },
+];
+
+const FONT_SIZES = [
+  { label: 'XS (12PX)', value: '12px' },
+  { label: 'SM (14PX)', value: '14px' },
+  { label: 'REG (16PX)', value: '16px' },
+  { label: 'LG (20PX)', value: '20px' },
+  { label: 'XL (24PX)', value: '24px' },
+];
+
+const COLORS = [
+  { label: 'ĐEN', value: '#000000', bg: 'bg-black' },
+  { label: 'XÁM', value: '#64748b', bg: 'bg-slate-500' },
+  { label: 'ĐỎ', value: '#ef4444', bg: 'bg-red-500' },
+  { label: 'CAM', value: '#f97316', bg: 'bg-orange-500' },
+  { label: 'VÀNG', value: '#eab308', bg: 'bg-yellow-500' },
+  { label: 'XANH LÁ', value: '#22c55e', bg: 'bg-green-500' },
+  { label: 'XANH DƯƠNG', value: '#3b82f6', bg: 'bg-blue-500' },
+  { label: 'TÍM', value: '#a855f7', bg: 'bg-purple-500' },
+  { label: 'HỒNG', value: '#ec4899', bg: 'bg-pink-500' },
+];
+
+interface RichMarkdownRendererProps {
+  content: string;
+  className?: string;
+  isInverted?: boolean;
+  onImageClick?: (url: string) => void;
+}
+
+const RichMarkdownRenderer: React.FC<RichMarkdownRendererProps> = ({
+  content,
+  className = '',
+  isInverted = false,
+  onImageClick
+}) => {
+  if (!content) return null;
+
+  // 1. Chuẩn hóa link ảnh Google Drive trong markdown ![alt](drive_url)
+  let processed = content.replace(
+    /!\[([^\]]*)\]\((https:\/\/(?:drive|docs)\.google\.com\/(?:file\/d\/|open\?id=|uc\?[^)]*id=)([a-zA-Z0-9_-]+)[^)]*)\)/g,
+    (_match, alt, _fullUrl, fileId) => `![${alt}](https://lh3.googleusercontent.com/d/${fileId})`
+  );
+
+  // 2. Chuyển URL ảnh đứng riêng 1 dòng thành ảnh markdown
+  processed = processed.replace(
+    /(?:^|\n)(https?:\/\/[^\s]+?\.(?:png|jpe?g|gif|webp|svg|bmp)(?:\?[^\s]*)?)(?=\n|$)/gi,
+    '\n![Hình ảnh]($1)\n'
+  );
+
+  // 3. Chuyển URL Google Drive đứng riêng 1 dòng thành ảnh markdown
+  processed = processed.replace(
+    /(?:^|\n)https:\/\/(?:drive|docs)\.google\.com\/(?:file\/d\/|open\?id=|uc\?[^)]*id=)([a-zA-Z0-9_-]+)[^\s]*(?=\n|$)/gi,
+    '\n![Hình ảnh Drive](https://lh3.googleusercontent.com/d/$1)\n'
+  );
+
+  return (
+    <div 
+      className={`prose ${isInverted ? 'prose-invert text-slate-100 prose-p:text-slate-100 prose-headings:text-amber-300 prose-strong:text-white prose-li:text-slate-200' : 'prose-slate text-slate-800'} max-w-none leading-relaxed prose-p:my-1 prose-headings:my-2 prose-img:my-2 ${className}`}
+      style={isInverted ? { color: '#f8fafc' } : undefined}
+    >
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
+        rehypePlugins={[rehypeRaw, rehypeKatex]}
+        components={{
+          p: ({ node, ...props }) => (
+            <p {...props} className={isInverted ? 'text-slate-100 my-1' : 'my-1'} style={isInverted ? { color: '#f8fafc' } : undefined} />
+          ),
+          span: ({ node, ...props }) => (
+            <span {...props} style={isInverted && !props.style?.color ? { color: '#f8fafc' } : props.style} />
+          ),
+          li: ({ node, ...props }) => (
+            <li {...props} className={isInverted ? 'text-slate-200' : ''} style={isInverted ? { color: '#e2e8f0' } : undefined} />
+          ),
+          strong: ({ node, ...props }) => (
+            <strong {...props} className={isInverted ? 'text-white font-bold' : 'font-bold'} style={isInverted ? { color: '#ffffff' } : undefined} />
+          ),
+          img: ({ node, ...props }) => {
+            const src = props.src || '';
+            return (
+              <span className="block my-2.5">
+                <img
+                  {...props}
+                  className="max-h-80 sm:max-h-96 max-w-full object-contain rounded-2xl border border-slate-200/80 shadow-xs bg-slate-50 cursor-pointer hover:shadow-md hover:scale-[1.01] transition-all mx-auto"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (src && onImageClick) onImageClick(src);
+                  }}
+                  title="Nhấn để phóng to ảnh"
+                />
+              </span>
+            );
+          },
+          a: ({ node, ...props }) => (
+            <a
+              {...props}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={isInverted ? 'text-blue-300 hover:text-blue-200 underline font-semibold transition-colors' : 'text-indigo-500 hover:text-indigo-700 underline font-semibold transition-colors'}
+            />
+          ),
+        }}
+      >
+        {processed}
+      </ReactMarkdown>
+    </div>
+  );
+};
 
 interface VdcQuestionsPanelProps {
   isAdmin: boolean;
@@ -94,6 +250,135 @@ export const VdcQuestionsPanel: React.FC<VdcQuestionsPanelProps> = ({
   });
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+
+  // States cho màn hình soạn thảo VDC lớn toàn màn hình 2 cột
+  const [activeEditorField, setActiveEditorField] = useState<'content' | 'solution'>('content');
+  const [editorLayoutMode, setEditorLayoutMode] = useState<'split' | 'edit' | 'preview'>('split');
+  const [mobileEditorTab, setMobileEditorTab] = useState<'edit' | 'preview'>('edit');
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [showMathDialog, setShowMathDialog] = useState(false);
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+  const [previewStudentMode, setPreviewStudentMode] = useState(false);
+  const [previewSelectedAnswer, setPreviewSelectedAnswer] = useState<string | null>(null);
+  const [previewShowSolution, setPreviewShowSolution] = useState(false);
+
+  const contentTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const solutionTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Hàm bọc định dạng văn bản cho trường đang hoạt động (Đề bài hoặc Lời giải)
+  const wrapText = (tag: string, endTag?: string, targetOverride?: 'content' | 'solution') => {
+    const target = targetOverride || activeEditorField;
+    const targetRef = target === 'solution' ? solutionTextareaRef : contentTextareaRef;
+    const currentVal = (target === 'solution' ? modalForm.solution : modalForm.content) || '';
+    const textarea = targetRef.current;
+    
+    if (!textarea) {
+      setModalForm(prev => ({
+        ...prev,
+        [target]: (prev[target] || '') + tag + (endTag || '')
+      }));
+      return;
+    }
+    
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = currentVal.substring(start, end);
+    const before = currentVal.substring(0, start);
+    const after = currentVal.substring(end);
+    const newText = before + tag + selectedText + (endTag || '') + after;
+    
+    setModalForm(prev => ({
+      ...prev,
+      [target]: newText
+    }));
+    
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + tag.length, start + tag.length + selectedText.length);
+    }, 10);
+  };
+
+  const applyStyle = (property: string, value: string) => {
+    wrapText(`<span style="${property}: ${value}">`, '</span>');
+    setActiveDropdown(null);
+  };
+
+  // Chèn ảnh từ modal tải ảnh vào vị trí con trỏ của trường đang hoạt động
+  const handleInsertImageSnippet = (snippet: string) => {
+    const target = activeEditorField;
+    const targetRef = target === 'solution' ? solutionTextareaRef : contentTextareaRef;
+    const currentVal = (target === 'solution' ? modalForm.solution : modalForm.content) || '';
+    const textarea = targetRef.current;
+    
+    if (!textarea) {
+      setModalForm(prev => ({
+        ...prev,
+        [target]: (prev[target] || '') + '\n' + snippet + '\n'
+      }));
+      return;
+    }
+    
+    const start = textarea.selectionStart ?? currentVal.length;
+    const end = textarea.selectionEnd ?? currentVal.length;
+    const newVal = currentVal.substring(0, start) + snippet + currentVal.substring(end);
+    
+    setModalForm(prev => ({
+      ...prev,
+      [target]: newVal
+    }));
+    
+    setTimeout(() => {
+      textarea.focus();
+      const newCursor = start + snippet.length;
+      textarea.setSelectionRange(newCursor, newCursor);
+    }, 50);
+  };
+
+  // Hỗ trợ dán ảnh trực tiếp từ bộ nhớ tạm (Ctrl + V) và upload lên ImgBB
+  const handleTextareaPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>, target: 'content' | 'solution') => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const blob = items[i].getAsFile();
+        if (blob) {
+          e.preventDefault();
+          showToast('Đang tự động tải ảnh dán từ clipboard (Ctrl+V) lên ImgBB...', 'info', 'Đang xử lý ảnh');
+          try {
+            const result = await uploadToImgBB(blob);
+            const snippet = `\n\n![Ảnh dán](${result.url})\n\n`;
+            
+            const targetRef = target === 'solution' ? solutionTextareaRef : contentTextareaRef;
+            const currentVal = (target === 'solution' ? modalForm.solution : modalForm.content) || '';
+            const textarea = targetRef.current;
+            
+            if (!textarea) {
+              setModalForm(prev => ({
+                ...prev,
+                [target]: (prev[target] || '') + snippet
+              }));
+            } else {
+              const start = textarea.selectionStart ?? currentVal.length;
+              const end = textarea.selectionEnd ?? currentVal.length;
+              const newVal = currentVal.substring(0, start) + snippet + currentVal.substring(end);
+              setModalForm(prev => ({ ...prev, [target]: newVal }));
+              setTimeout(() => {
+                textarea.focus();
+                const newCursor = start + snippet.length;
+                textarea.setSelectionRange(newCursor, newCursor);
+              }, 50);
+            }
+            
+            showToast('Đã tải và chèn ảnh dán thành công!', 'success');
+          } catch (err: any) {
+            showToast(err.message || 'Không thể tải ảnh dán lên ImgBB.', 'error');
+          }
+          break;
+        }
+      }
+    }
+  };
 
   // Preview Image Lightbox
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
@@ -226,47 +511,82 @@ export const VdcQuestionsPanel: React.FC<VdcQuestionsPanelProps> = ({
     }
   };
 
-  // Lấy danh sách các chương (Folders) từ cấu trúc sách + danh sách thủ công trong chapterOrder
+  // Lấy danh sách các chương từ cấu trúc sách hiện tại và các chương tùy chỉnh
   const chaptersList = useMemo(() => {
     const list: { id: string; title: string; fromNode?: boolean }[] = [];
     const seen = new Set<string>();
     const deletedSet = new Set(deletedChapters.map(t => t.trim().toLowerCase()));
 
-    const addTitle = (title: string, id?: string, fromNode = false) => {
-      const clean = title?.trim();
-      if (!clean) return;
-      const lower = clean.toLowerCase();
-      if (!seen.has(lower) && !deletedSet.has(lower)) {
-        seen.add(lower);
-        list.push({ id: id || `custom-${clean}`, title: clean, fromNode });
-      }
+    // Hàm kiểm tra xem folder có phải là thư mục chứa sách (như Sách KNTT, Sách CTST) không
+    const isBookContainer = (f: BookNode) => {
+      if (f.parentId) return false;
+      return (nodes || []).some(c => c.parentId === f.id && c.type === 'folder');
     };
 
-    // 1. Thêm các chương trong chapterOrder (đảm bảo các chương tự tạo luôn xuất hiện dù có 0 câu hỏi)
-    chapterOrder.forEach(title => {
-      addTitle(title);
+    // 1. Lấy tất cả các thư mục/chương từ cấu trúc sách (cả folder gốc và các folder chương con bên trong sách KNTT/CTST)
+    const orderedFolderNodes: BookNode[] = [];
+    const addFolderTree = (pid: string | null | undefined) => {
+      const children = (nodes || [])
+        .filter(n => (pid ? n.parentId === pid : (!n.parentId || n.parentId === null || n.parentId === undefined)))
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      
+      for (const c of children) {
+        // Bỏ qua folder cấp sách lớn nếu nó chứa các chương con
+        if (c.type === 'folder' && !isBookContainer(c)) {
+          orderedFolderNodes.push(c);
+        } else if (c.type === 'lesson') {
+          // Nếu bài học có con hoặc tiêu đề bắt đầu bằng Chương/Chủ đề/Chuyên đề/Đề thi
+          const hasChildren = (nodes || []).some(sub => sub.parentId === c.id);
+          const tLower = c.title.trim().toLowerCase();
+          if (hasChildren || tLower.startsWith('chương') || tLower.startsWith('chủ đề') || tLower.startsWith('chuyên đề') || tLower.startsWith('đề thi')) {
+            orderedFolderNodes.push(c);
+          }
+        }
+        addFolderTree(c.id);
+      }
+    };
+    addFolderTree(null);
+
+    // Bổ sung các folder nếu có parentId khác biệt
+    (nodes || []).forEach(n => {
+      if (n.type === 'folder' && !isBookContainer(n) && !orderedFolderNodes.some(o => o.id === n.id)) {
+        orderedFolderNodes.push(n);
+      }
     });
 
-    // 2. Thêm từ các node folder gốc trong sách bài giảng
-    (nodes || [])
-      .filter(n => n.type === 'folder' && (n.parentId === null || n.parentId === undefined))
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-      .forEach(f => {
-        addTitle(f.title, f.id, true);
-      });
+    // Thêm các folder từ sách vào list
+    orderedFolderNodes.forEach(f => {
+      const clean = f.title.trim();
+      if (clean && !seen.has(clean.toLowerCase()) && !deletedSet.has(clean.toLowerCase())) {
+        seen.add(clean.toLowerCase());
+        list.push({ id: f.id, title: clean, fromNode: true });
+      }
+    });
+
+    // 2. Thêm các chương đã được tạo trực tiếp từ menu VDC (lưu trong chapterOrder)
+    (chapterOrder || []).forEach((ordTitle, idx) => {
+      const clean = (ordTitle || '').trim();
+      if (clean && !seen.has(clean.toLowerCase()) && !deletedSet.has(clean.toLowerCase())) {
+        seen.add(clean.toLowerCase());
+        list.push({ id: `vdc-custom-ch-${idx}-${clean}`, title: clean, fromNode: false });
+      }
+    });
 
     // 3. Thêm bất kỳ chương nào đã có trong danh sách câu hỏi
     questions.forEach(q => {
-      if (q.chapter_title) {
-        addTitle(q.chapter_title, q.chapter_id);
+      const title = q.chapter_title?.trim();
+      if (title && !seen.has(title.toLowerCase()) && !deletedSet.has(title.toLowerCase())) {
+        seen.add(title.toLowerCase());
+        list.push({ id: q.chapter_id || `custom-${title}`, title, fromNode: false });
       }
     });
 
-    // 4. Sắp xếp danh sách chương theo chapterOrder nếu có
+    // 4. Sắp xếp danh sách chương theo chapterOrder nếu có (so sánh không phân biệt hoa thường)
     if (chapterOrder.length > 0) {
+      const lowerOrder = chapterOrder.map(t => t.trim().toLowerCase());
       list.sort((a, b) => {
-        const idxA = chapterOrder.findIndex(t => t.trim().toLowerCase() === a.title.trim().toLowerCase());
-        const idxB = chapterOrder.findIndex(t => t.trim().toLowerCase() === b.title.trim().toLowerCase());
+        const idxA = lowerOrder.indexOf(a.title.trim().toLowerCase());
+        const idxB = lowerOrder.indexOf(b.title.trim().toLowerCase());
         if (idxA !== -1 && idxB !== -1) return idxA - idxB;
         if (idxA !== -1) return -1;
         if (idxB !== -1) return 1;
@@ -445,11 +765,11 @@ export const VdcQuestionsPanel: React.FC<VdcQuestionsPanelProps> = ({
       localStorage.setItem(`vdc_deleted_chapters_g${gradeId}`, JSON.stringify(updatedDeleted));
 
       // 2. Thêm vào chapterOrder
-      const updatedOrder = Array.from(new Set([...chapterOrder.filter(t => t.trim().toLowerCase() !== titleToAdd.toLowerCase()), titleToAdd]));
+      const updatedOrder = [...chapterOrder.filter(t => t.trim().toLowerCase() !== titleToAdd.toLowerCase()), titleToAdd];
       setChapterOrder(updatedOrder);
       localStorage.setItem(`vdc_chapter_order_g${gradeId}`, JSON.stringify(updatedOrder));
 
-      // 3. Đồng bộ lên CSDL Supabase để bảo tồn vĩnh viễn trên đám mây
+      // 3. Đồng bộ lên Supabase app_settings (ID: 8000 + gradeId) để các thiết bị / trình duyệt khác thấy ngay
       await supabase.from('app_settings').upsert({
         id: 8000 + gradeId,
         data: {
@@ -476,6 +796,8 @@ export const VdcQuestionsPanel: React.FC<VdcQuestionsPanelProps> = ({
   const loadQuestions = useCallback(async () => {
     setLoading(true);
     try {
+      let loadedQuestions: VdcQuestion[] = [];
+
       // 1. Luôn tải cấu hình VDC (danh sách chương đã xóa/ẩn, thứ tự chương) từ Supabase app_settings (8000 + gradeId)
       try {
         const { data: vdcSettings, error: sErr } = await supabase
@@ -499,7 +821,7 @@ export const VdcQuestionsPanel: React.FC<VdcQuestionsPanelProps> = ({
             } catch {}
           }
           if (Array.isArray(sData.questions) && sData.questions.length > 0) {
-            setQuestions(sData.questions);
+            loadedQuestions = sData.questions;
           }
         }
       } catch (settingsErr) {
@@ -519,17 +841,19 @@ export const VdcQuestionsPanel: React.FC<VdcQuestionsPanelProps> = ({
         setQuestions(dbData as VdcQuestion[]);
       } else if (!error && dbData) {
         setDbStatus('connected');
-        setQuestions(prev => {
-          if (prev && prev.length > 0) return prev;
-          return SAMPLE_VDC_QUESTIONS.filter(q => q.grade_id === gradeId);
-        });
+        if (loadedQuestions.length > 0) {
+          setQuestions(loadedQuestions);
+        } else {
+          setQuestions(SAMPLE_VDC_QUESTIONS.filter(q => q.grade_id === gradeId));
+        }
       } else {
         // Lỗi (chưa tạo bảng vdc_questions trên Supabase) -> Dùng Fallback
         setDbStatus('fallback');
-        setQuestions(prev => {
-          if (prev && prev.length > 0) return prev;
-          return SAMPLE_VDC_QUESTIONS.filter(q => q.grade_id === gradeId);
-        });
+        if (loadedQuestions.length > 0) {
+          setQuestions(loadedQuestions);
+        } else {
+          setQuestions(SAMPLE_VDC_QUESTIONS.filter(q => q.grade_id === gradeId));
+        }
       }
     } catch (err) {
       console.error("Lỗi khi tải câu hỏi VDC:", err);
@@ -642,6 +966,14 @@ export const VdcQuestionsPanel: React.FC<VdcQuestionsPanelProps> = ({
       solution_image_url: '',
       order_num: questions.length + 1
     });
+    setActiveEditorField('content');
+    setEditorLayoutMode('split');
+    setMobileEditorTab('edit');
+    setPreviewStudentMode(false);
+    setPreviewSelectedAnswer(null);
+    setPreviewShowSolution(false);
+    setShowMathDialog(false);
+    setActiveDropdown(null);
     setShowQuestionModal(true);
   };
 
@@ -652,6 +984,14 @@ export const VdcQuestionsPanel: React.FC<VdcQuestionsPanelProps> = ({
       ...q,
       options: q.options && q.options.length > 0 ? [...q.options] : ['', '', '', '']
     });
+    setActiveEditorField('content');
+    setEditorLayoutMode('split');
+    setMobileEditorTab('edit');
+    setPreviewStudentMode(false);
+    setPreviewSelectedAnswer(null);
+    setPreviewShowSolution(false);
+    setShowMathDialog(false);
+    setActiveDropdown(null);
     setShowQuestionModal(true);
   };
 
@@ -669,10 +1009,15 @@ export const VdcQuestionsPanel: React.FC<VdcQuestionsPanelProps> = ({
           const nextList = questions.filter(q => q.id !== id);
           setQuestions(nextList);
 
-          // Cập nhật bản sao lưu fallback
+          // Cập nhật bản sao lưu fallback (bảo toàn thứ tự và các chương tùy chỉnh)
           await supabase.from('app_settings').upsert({
             id: 8000 + gradeId,
-            data: { questions: nextList, updated_at: new Date().toISOString() }
+            data: { 
+              questions: nextList, 
+              chapter_order: chapterOrder,
+              deleted_chapters: deletedChapters,
+              updated_at: new Date().toISOString() 
+            }
           });
 
           showToast('Đã xóa câu hỏi thành công!', 'success');
@@ -748,10 +1093,15 @@ export const VdcQuestionsPanel: React.FC<VdcQuestionsPanelProps> = ({
       }
       setQuestions(nextQuestions);
 
-      // 3. Luôn lưu một bản vào fallback app_settings để đảm bảo an toàn 100%
+      // 3. Luôn lưu một bản vào fallback app_settings để đảm bảo an toàn 100% (bảo toàn thứ tự chương và chương tùy chỉnh)
       await supabase.from('app_settings').upsert({
         id: 8000 + gradeId,
-        data: { questions: nextQuestions, updated_at: new Date().toISOString() }
+        data: { 
+          questions: nextQuestions, 
+          chapter_order: chapterOrder,
+          deleted_chapters: deletedChapters,
+          updated_at: new Date().toISOString() 
+        }
       });
 
       setShowQuestionModal(false);
@@ -1544,9 +1894,9 @@ ON public.vdc_questions FOR DELETE USING (true);
                           </h4>
                         )}
 
-                        {/* Đề bài (Render LaTeX & xuống dòng chuẩn xác) */}
-                        <div className="text-sm sm:text-base leading-relaxed text-slate-800 font-medium whitespace-pre-line">
-                          {renderLatex(q.content)}
+                        {/* Đề bài (Render Markdown, LaTeX, ảnh & xuống dòng chuẩn xác) */}
+                        <div className="text-sm sm:text-base leading-relaxed text-slate-800 font-medium">
+                          <RichMarkdownRenderer content={q.content} onImageClick={setLightboxImage} />
                         </div>
 
                         {/* Ảnh đề bài (nếu có) */}
@@ -1597,7 +1947,7 @@ ON public.vdc_questions FOR DELETE USING (true);
                                     {optLetter}
                                   </span>
                                   <div className="flex-1 pt-0.5 leading-snug">
-                                    {renderLatex(opt.replace(/^[A-D]\.\s*/, ''))}
+                                    <RichMarkdownRenderer content={opt.replace(/^[A-D]\.\s*/, '')} onImageClick={setLightboxImage} />
                                   </div>
                                   {isCorrect && (
                                     <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
@@ -1652,9 +2002,9 @@ ON public.vdc_questions FOR DELETE USING (true);
                             </div>
 
                             {/* Nội dung lời giải */}
-                            <div className="text-xs sm:text-sm text-slate-200 leading-relaxed font-normal whitespace-pre-line space-y-2">
+                            <div className="text-xs sm:text-sm text-slate-200 leading-relaxed font-normal space-y-2">
                               {q.solution ? (
-                                renderLatex(q.solution)
+                                <RichMarkdownRenderer content={q.solution} isInverted onImageClick={setLightboxImage} />
                               ) : (
                                 <p className="italic text-slate-400">
                                   Lời giải chi tiết đang được giáo viên hoàn thiện và cập nhật thêm.
@@ -1745,296 +2095,964 @@ ON public.vdc_questions FOR DELETE USING (true);
         </main>
       </div>
 
-      {/* 3. MODAL THÊM / SỬA CÂU HỎI (DÀNH CHO GIÁO VIÊN) */}
+      {/* 3. MODAL SOẠN THẢO CÂU HỎI VDC TOÀN MÀN HÌNH - CHIA 2 CỘT SOẠN & XEM TRƯỚC */}
       {showQuestionModal && (
-        <div className="fixed inset-0 z-[500] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-3xl rounded-3xl shadow-2xl border border-slate-100 flex flex-col max-h-[92vh] overflow-hidden animate-in zoom-in-95 duration-200">
-            {/* Header Modal */}
-            <header className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
+        <div className="fixed inset-0 z-[500] bg-slate-950/80 backdrop-blur-md flex flex-col w-screen h-screen overflow-hidden animate-in fade-in duration-200">
+          <div className="bg-slate-50 w-full h-full flex flex-col overflow-hidden text-slate-800">
+            {/* Header Modal Toàn Màn Hình */}
+            <header className="px-4 sm:px-6 py-3 bg-slate-900 text-white flex items-center justify-between shrink-0 border-b border-slate-800 shadow-md">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/30">
+                  <Sparkles size={18} />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-black text-xs sm:text-sm uppercase tracking-wide truncate">
+                      {editingQuestion ? 'Chỉnh sửa câu hỏi VDC' : 'Soạn thảo câu hỏi VDC / Sưu tầm mới'}
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
+                      Khối {gradeId}
+                    </span>
+                    {modalForm.chapter_title && (
+                      <span className="hidden md:inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold text-slate-300 bg-white/10 max-w-[200px] truncate">
+                        {modalForm.chapter_title}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-400 truncate hidden sm:block">
+                    Hỗ trợ KaTeX ($...$, $$...$$), Markdown, dán ảnh trực tiếp (Ctrl+V) & Xem trước hai cột song song
+                  </p>
+                </div>
+              </div>
+
+              {/* Center / Right controls */}
               <div className="flex items-center gap-2">
-                <Sparkles size={18} className="text-amber-400" />
-                <h3 className="font-black text-sm uppercase tracking-wide">
-                  {editingQuestion ? 'Chỉnh sửa câu hỏi VDC' : 'Đưa lên câu hỏi VDC / Sưu tầm mới'}
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowQuestionModal(false)}
-                className="p-1 text-slate-400 hover:text-white rounded-lg transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </header>
-
-            {/* Form body */}
-            <form onSubmit={handleSaveQuestion} className="flex-1 overflow-y-auto p-6 space-y-5 custom-scrollbar">
-              {/* Hàng 1: Chương & Mức độ */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">
-                    Chương bài học *
-                  </label>
-                  <input
-                    type="text"
-                    list="chapters-datalist"
-                    value={modalForm.chapter_title || ''}
-                    onChange={e => setModalForm({ ...modalForm, chapter_title: e.target.value })}
-                    placeholder="VD: Chương 1: Dao động cơ"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                    required
-                  />
-                  <datalist id="chapters-datalist">
-                    {chaptersList.map(c => (
-                      <option key={c.id} value={c.title} />
-                    ))}
-                  </datalist>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">
-                    Phân loại / Mức độ *
-                  </label>
-                  <select
-                    value={modalForm.level || 'vdc'}
-                    onChange={e => setModalForm({ ...modalForm, level: e.target.value as any })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-indigo-500 focus:bg-white transition-all cursor-pointer"
+                {/* Desktop Layout Toggles */}
+                <div className="hidden lg:flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setEditorLayoutMode('split')}
+                    className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${
+                      editorLayoutMode === 'split' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="Chia 2 cột: Soạn thảo và Xem trước song song"
                   >
-                    <option value="vdc">⚡ Vận dụng cao 9+ (VDC)</option>
-                    <option value="hay_suutam">🌟 Câu hay sưu tầm đặc sắc</option>
-                    <option value="de_thi_thu">🎯 Đề thi thử chuyên chọn lọc</option>
-                    <option value="phuong_phap_la">💡 Phương pháp giải độc lạ / Điểm 10</option>
-                  </select>
+                    <Columns2 size={14} />
+                    <span className="text-[11px]">Chia đôi 50/50</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditorLayoutMode('edit')}
+                    className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${
+                      editorLayoutMode === 'edit' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="Mở rộng toàn màn hình soạn thảo"
+                  >
+                    <FileText size={14} />
+                    <span className="text-[11px]">Chỉ soạn thảo</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditorLayoutMode('preview')}
+                    className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${
+                      editorLayoutMode === 'preview' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="Mở rộng toàn màn hình xem trước"
+                  >
+                    <Eye size={14} />
+                    <span className="text-[11px]">Chỉ xem trước</span>
+                  </button>
                 </div>
-              </div>
 
-              {/* Hàng 2: Tiêu đề dạng bài & Nguồn đề */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">
-                    Tiêu đề dạng bài (Tùy chọn)
-                  </label>
-                  <input
-                    type="text"
-                    value={modalForm.title || ''}
-                    onChange={e => setModalForm({ ...modalForm, title: e.target.value })}
-                    placeholder="VD: Con lắc lò xo chịu ngoại lực đột ngột"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                  />
+                {/* Mobile Tabs */}
+                <div className="flex lg:hidden items-center bg-slate-800 p-0.5 rounded-xl border border-slate-700 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setMobileEditorTab('edit')}
+                    className={`px-3 py-1.5 rounded-lg flex items-center gap-1 transition-all ${
+                      mobileEditorTab === 'edit' ? 'bg-indigo-600 text-white' : 'text-slate-400'
+                    }`}
+                  >
+                    <FileText size={13} />
+                    <span className="text-[10px] uppercase font-black">Soạn</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMobileEditorTab('preview')}
+                    className={`px-3 py-1.5 rounded-lg flex items-center gap-1 transition-all ${
+                      mobileEditorTab === 'preview' ? 'bg-indigo-600 text-white' : 'text-slate-400'
+                    }`}
+                  >
+                    <Eye size={13} />
+                    <span className="text-[10px] uppercase font-black">Xem trước</span>
+                  </button>
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">
-                    Nguồn sưu tầm / Đề thi
-                  </label>
-                  <input
-                    type="text"
-                    value={modalForm.source || ''}
-                    onChange={e => setModalForm({ ...modalForm, source: e.target.value })}
-                    placeholder="VD: Chuyên Amsterdam 2024 / Thầy Minh sưu tầm"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                  />
-                </div>
-              </div>
+                {/* Quick Save button in header */}
+                <button
+                  type="button"
+                  onClick={handleSaveQuestion}
+                  disabled={isSaving}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md shadow-emerald-900/30 flex items-center gap-1.5 transition-all disabled:opacity-50"
+                >
+                  {isSaving ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+                  <span className="hidden sm:inline">{editingQuestion ? 'Lưu thay đổi' : 'Đưa lên ngay'}</span>
+                  <span className="sm:hidden">Lưu</span>
+                </button>
 
-              {/* Hàng 3: Loại câu hỏi */}
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">
-                  Hình thức câu hỏi
-                </label>
-                <div className="flex items-center gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
-                    <input
-                      type="radio"
-                      name="q_type"
-                      checked={modalForm.question_type === 'multiple_choice'}
-                      onChange={() => setModalForm({ ...modalForm, question_type: 'multiple_choice' })}
-                      className="accent-indigo-600"
-                    />
-                    Trắc nghiệm (4 phương án A, B, C, D)
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
-                    <input
-                      type="radio"
-                      name="q_type"
-                      checked={modalForm.question_type === 'essay'}
-                      onChange={() => setModalForm({ ...modalForm, question_type: 'essay' })}
-                      className="accent-indigo-600"
-                    />
-                    Tự luận / Điền đáp số
-                  </label>
-                </div>
-              </div>
-
-              {/* Hàng 4: Nội dung đề bài */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">
-                    Nội dung câu hỏi (Đề bài) *
-                  </label>
-                  <span className="text-[10px] text-slate-400 font-medium">
-                    Nhấn Enter để xuống dòng • Công thức: <code className="bg-slate-100 px-1 py-0.5 rounded text-indigo-600 font-bold">$...$</code> hoặc <code className="bg-slate-100 px-1 py-0.5 rounded text-indigo-600 font-bold">$$...$$</code>
-                  </span>
-                </div>
-                <textarea
-                  rows={4}
-                  value={modalForm.content || ''}
-                  onChange={e => setModalForm({ ...modalForm, content: e.target.value })}
-                  placeholder="Nhập nội dung đề bài... Thầy/cô gõ Enter để xuống dòng tùy ý.&#10;Ví dụ: Cho con lắc lò xo $k = 100\text{ N/m}$, $m = 100\text{ g}$..."
-                  className="w-full px-3.5 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:border-indigo-500 focus:bg-white transition-all leading-relaxed"
-                  required
-                />
-                {/* Live Preview đề bài */}
-                {modalForm.content && (
-                  <div className="mt-2 p-3 bg-indigo-50/50 rounded-xl border border-indigo-100 text-xs text-slate-800 leading-relaxed whitespace-pre-line">
-                    <span className="text-[9px] font-black uppercase tracking-widest text-indigo-600 block mb-1">
-                      Xem trước nội dung hiển thị (xuống dòng & công thức):
-                    </span>
-                    {renderLatex(modalForm.content)}
-                  </div>
-                )}
-              </div>
-
-              {/* Hàng 5: Link hình ảnh đề bài */}
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">
-                  Hình ảnh đề bài (Nếu có)
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={modalForm.image_url || ''}
-                    onChange={e => setModalForm({ ...modalForm, image_url: e.target.value })}
-                    placeholder="Dán link ảnh hoặc tải ảnh lên từ máy..."
-                    className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                  />
-                  <label className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer transition-colors flex items-center gap-1.5 shrink-0">
-                    <Upload size={14} />
-                    <span>{isUploadingImage ? 'Đang tải...' : 'Tải ảnh lên'}</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={e => handleUploadImage(e, 'image_url')}
-                      disabled={isUploadingImage}
-                    />
-                  </label>
-                </div>
-              </div>
-
-              {/* Hàng 6: Các phương án A, B, C, D (Nếu trắc nghiệm) */}
-              {modalForm.question_type === 'multiple_choice' && (
-                <div className="space-y-3 pt-2 border-t border-slate-100">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">
-                      4 Phương án trắc nghiệm & Chọn đáp án đúng
-                    </label>
-                    <span className="text-[10px] text-slate-400">Đánh dấu tích tròn vào đáp án đúng</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {['A', 'B', 'C', 'D'].map((letter, i) => (
-                      <div key={letter} className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="correct_radio"
-                          checked={modalForm.correct_answer === letter}
-                          onChange={() => setModalForm({ ...modalForm, correct_answer: letter })}
-                          className="accent-emerald-600 w-4 h-4 cursor-pointer"
-                          title={`Chọn ${letter} làm đáp án đúng`}
-                        />
-                        <span className="w-6 h-6 rounded-lg bg-slate-100 text-slate-700 font-bold text-xs flex items-center justify-center shrink-0">
-                          {letter}
-                        </span>
-                        <input
-                          type="text"
-                          value={(modalForm.options || [])[i] || ''}
-                          onChange={e => {
-                            const newOpts = [...(modalForm.options || ['', '', '', ''])];
-                            newOpts[i] = e.target.value;
-                            setModalForm({ ...modalForm, options: newOpts });
-                          }}
-                          placeholder={`Nội dung phương án ${letter}...`}
-                          className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Hàng 7: Bài giải chi tiết */}
-              <div className="pt-2 border-t border-slate-100">
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500">
-                    Bài giải / Lời giải chi tiết
-                  </label>
-                  <span className="text-[10px] text-slate-400 font-medium">
-                    Nhấn Enter để xuống dòng từng bước • Công thức: <code className="bg-slate-100 px-1 py-0.5 rounded text-indigo-600 font-bold">$..$</code> hoặc <code className="bg-slate-100 px-1 py-0.5 rounded text-indigo-600 font-bold">$$..$$</code>
-                  </span>
-                </div>
-                <textarea
-                  rows={6}
-                  value={modalForm.solution || ''}
-                  onChange={e => setModalForm({ ...modalForm, solution: e.target.value })}
-                  placeholder="Nhập các bước tư duy, công thức giải, kết luận...&#10;Bước 1: Tính tần số góc...&#10;Bước 2: Viết phương trình..."
-                  className="w-full px-3.5 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:border-indigo-500 focus:bg-white transition-all leading-relaxed"
-                />
-                {/* Live Preview lời giải */}
-                {modalForm.solution && (
-                  <div className="mt-2 p-3 bg-slate-900 text-slate-200 rounded-xl text-xs leading-relaxed max-h-48 overflow-y-auto whitespace-pre-line">
-                    <span className="text-[9px] font-black uppercase tracking-widest text-amber-400 block mb-1">
-                      Xem trước lời giải hiển thị (xuống dòng & công thức):
-                    </span>
-                    {renderLatex(modalForm.solution)}
-                  </div>
-                )}
-              </div>
-
-              {/* Hàng 8: Link hình ảnh lời giải */}
-              <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">
-                  Hình vẽ minh họa lời giải (Nếu có)
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={modalForm.solution_image_url || ''}
-                    onChange={e => setModalForm({ ...modalForm, solution_image_url: e.target.value })}
-                    placeholder="Link đồ thị, giản đồ vectơ bài giải..."
-                    className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:border-indigo-500 focus:bg-white transition-all"
-                  />
-                  <label className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer transition-colors flex items-center gap-1.5 shrink-0">
-                    <Upload size={14} />
-                    <span>{isUploadingImage ? 'Đang tải...' : 'Tải ảnh giải'}</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={e => handleUploadImage(e, 'solution_image_url')}
-                      disabled={isUploadingImage}
-                    />
-                  </label>
-                </div>
-              </div>
-
-              {/* Footer hành động Modal */}
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                {/* Close button */}
                 <button
                   type="button"
                   onClick={() => setShowQuestionModal(false)}
-                  className="px-5 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                  className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors ml-1"
+                  title="Đóng cửa sổ soạn thảo"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </header>
+
+            {/* 2. CHÍNH DIỆN: 2 CỘT CHIA ĐÔI */}
+            <form onSubmit={handleSaveQuestion} className="flex-1 flex flex-col lg:flex-row overflow-hidden divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
+              
+              {/* === CỘT TRÁI: KHU VỰC SOẠN THẢO (50% hoặc Full) === */}
+              <div className={`flex flex-col bg-white overflow-hidden transition-all ${
+                editorLayoutMode === 'preview' ? 'hidden' : editorLayoutMode === 'edit' ? 'w-full flex-1' : 'w-full lg:w-1/2 flex-1'
+              } ${mobileEditorTab === 'preview' ? 'hidden lg:flex' : 'flex'}`}>
+                
+                {/* Meta properties row (Chương, Mức độ, Dạng bài, Nguồn, Hình thức) */}
+                <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50 space-y-3.5 shrink-0 overflow-y-auto max-h-[35vh]">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">
+                        Chương bài học *
+                      </label>
+                      <input
+                        type="text"
+                        list="chapters-datalist"
+                        value={modalForm.chapter_title || ''}
+                        onChange={e => setModalForm({ ...modalForm, chapter_title: e.target.value })}
+                        placeholder="VD: Chương 1: Dao động cơ"
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-indigo-500 transition-all shadow-sm"
+                        required
+                      />
+                      <datalist id="chapters-datalist">
+                        {chaptersList.map(c => (
+                          <option key={c.id} value={c.title} />
+                        ))}
+                      </datalist>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">
+                        Phân loại / Mức độ *
+                      </label>
+                      <select
+                        value={modalForm.level || 'vdc'}
+                        onChange={e => setModalForm({ ...modalForm, level: e.target.value as any })}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-indigo-500 transition-all cursor-pointer shadow-sm"
+                      >
+                        <option value="vdc">⚡ Vận dụng cao 9+ (VDC)</option>
+                        <option value="hay_suutam">🌟 Câu hay sưu tầm đặc sắc</option>
+                        <option value="de_thi_thu">🎯 Đề thi thử chuyên chọn lọc</option>
+                        <option value="phuong_phap_la">💡 Phương pháp giải độc lạ / Điểm 10</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">
+                        Tiêu đề dạng bài (Tùy chọn)
+                      </label>
+                      <input
+                        type="text"
+                        value={modalForm.title || ''}
+                        onChange={e => setModalForm({ ...modalForm, title: e.target.value })}
+                        placeholder="VD: Con lắc lò xo treo thẳng đứng"
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium outline-none focus:border-indigo-500 transition-all shadow-sm"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">
+                        Nguồn sưu tầm / Đề thi
+                      </label>
+                      <input
+                        type="text"
+                        value={modalForm.source || ''}
+                        onChange={e => setModalForm({ ...modalForm, source: e.target.value })}
+                        placeholder="VD: Chuyên Amsterdam 2024 / Thầy Minh"
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium outline-none focus:border-indigo-500 transition-all shadow-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Hình thức câu hỏi */}
+                  <div className="flex items-center justify-between pt-1">
+                    <div className="flex items-center gap-4">
+                      <label className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-slate-700">
+                        <input
+                          type="radio"
+                          name="modal_q_type"
+                          checked={modalForm.question_type === 'multiple_choice'}
+                          onChange={() => setModalForm({ ...modalForm, question_type: 'multiple_choice' })}
+                          className="accent-indigo-600"
+                        />
+                        Trắc nghiệm (4 đáp án A, B, C, D)
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-slate-700">
+                        <input
+                          type="radio"
+                          name="modal_q_type"
+                          checked={modalForm.question_type === 'essay'}
+                          onChange={() => setModalForm({ ...modalForm, question_type: 'essay' })}
+                          className="accent-indigo-600"
+                        />
+                        Tự luận / Điền đáp số
+                      </label>
+                    </div>
+
+                    <span className="text-[10px] text-slate-400 font-medium hidden sm:inline">
+                      Dán ảnh trực tiếp: <kbd className="bg-slate-200 px-1 py-0.5 rounded text-[9px] font-mono text-slate-700 font-bold">Ctrl + V</kbd>
+                    </span>
+                  </div>
+                </div>
+
+                {/* THANH CÔNG CỤ ĐỊNH DẠNG (STICKY FORMATTING TOOLBAR) */}
+                <div className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-sm border-b border-slate-200 px-3 py-2 flex flex-wrap items-center gap-1 shadow-sm">
+                  {/* Trường đích đang chọn: Đề bài vs Lời giải */}
+                  <div className="flex items-center bg-white rounded-xl p-0.5 border border-slate-200 mr-1.5 shrink-0 shadow-xs">
+                    <button
+                      type="button"
+                      onClick={() => setActiveEditorField('content')}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all ${
+                        activeEditorField === 'content'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      <span>📝 Đề bài</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveEditorField('solution')}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all ${
+                        activeEditorField === 'solution'
+                          ? 'bg-amber-600 text-white shadow-xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      <span>💡 Lời giải</span>
+                    </button>
+                  </div>
+
+                  {/* Nhóm định dạng văn bản cơ bản */}
+                  <div className="flex items-center gap-0.5 pr-1.5 mr-1 border-r border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => wrapText('**', '**')}
+                      className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
+                      title="In đậm (Bold)"
+                    >
+                      <Bold size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => wrapText('_', '_')}
+                      className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
+                      title="In nghiêng (Italic)"
+                    >
+                      <Italic size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => wrapText('<u>', '</u>')}
+                      className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
+                      title="Gạch chân (Underline)"
+                    >
+                      <Underline size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => wrapText('### ')}
+                      className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
+                      title="Tiêu đề mục (Heading)"
+                    >
+                      <Heading3 size={15} />
+                    </button>
+                  </div>
+
+                  {/* Nhóm danh sách, bảng, trích dẫn */}
+                  <div className="flex items-center gap-0.5 pr-1.5 mr-1 border-r border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => wrapText('- ')}
+                      className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
+                      title="Danh sách gạch đầu dòng"
+                    >
+                      <List size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => wrapText('1. ')}
+                      className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
+                      title="Danh sách đánh số thứ tự"
+                    >
+                      <ListOrdered size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => wrapText('\n| Thông số | Giá trị |\n| :--- | :--- |\n| $m$ | $100\\text{ g}$ |\n| $k$ | $100\\text{ N/m}$ |\n')}
+                      className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
+                      title="Chèn bảng dữ liệu Markdown"
+                    >
+                      <TableIcon size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => wrapText('> **Chú ý quan trọng:** ')}
+                      className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
+                      title="Hộp ghi chú (Quote/Callout)"
+                    >
+                      <Quote size={15} />
+                    </button>
+                  </div>
+
+                  {/* Nút dropdown công thức Toán / Lý (KaTeX) */}
+                  <div className="relative pr-1.5 mr-1 border-r border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setShowMathDialog(!showMathDialog)}
+                      className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                        showMathDialog ? 'bg-orange-100 text-orange-700' : 'text-slate-600 hover:text-orange-600 hover:bg-white'
+                      }`}
+                      title="Chèn công thức Toán & Vật lý LaTeX"
+                    >
+                      <Calculator size={15} className="text-orange-600" />
+                      <span className="text-[11px] font-black uppercase text-orange-600">Công thức</span>
+                      <ChevronDown size={11} />
+                    </button>
+
+                    {showMathDialog && (
+                      <div className="absolute top-full left-0 mt-2 w-[340px] sm:w-[380px] bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 p-4 animate-in fade-in slide-in-from-top-2 max-h-[380px] overflow-y-auto custom-scrollbar">
+                        <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                            CÔNG THỨC TOÁN & VẬT LÝ LATEX
+                          </span>
+                          <span className="text-[9px] font-black text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">
+                            BẤM ĐỂ CHÈN
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          {MATH_FORMULAS.map(m => (
+                            <button
+                              key={m.label}
+                              type="button"
+                              onClick={() => {
+                                wrapText(m.value);
+                                setShowMathDialog(false);
+                              }}
+                              className="flex flex-col items-center justify-center p-2 rounded-xl bg-slate-50 hover:bg-orange-50 hover:border-orange-200 border border-slate-100 transition-all group"
+                            >
+                              <span className="text-sm font-black text-orange-600 group-hover:scale-110 transition-transform">
+                                {m.display}
+                              </span>
+                              <span className="text-[8px] font-bold text-slate-500 uppercase tracking-tight text-center mt-1 truncate w-full">
+                                {m.label}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                        <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
+                          <button
+                            type="button"
+                            onClick={() => { wrapText('$', '$'); setShowMathDialog(false); }}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-[10px] font-bold text-slate-700"
+                          >
+                            Chèn $...$ (Cùng dòng)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { wrapText('$$\n', '\n$$'); setShowMathDialog(false); }}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-[10px] font-bold text-slate-700"
+                          >
+                            Chèn $$...$$ (Dòng riêng)
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Căn lề */}
+                  <div className="flex items-center gap-0.5 pr-1.5 mr-1 border-r border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => wrapText('<div align="left">\n\n', '\n\n</div>')}
+                      className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
+                      title="Căn trái"
+                    >
+                      <AlignLeft size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => wrapText('<div align="center">\n\n', '\n\n</div>')}
+                      className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
+                      title="Căn giữa"
+                    >
+                      <AlignCenter size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => wrapText('<div align="right">\n\n', '\n\n</div>')}
+                      className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
+                      title="Căn phải"
+                    >
+                      <AlignRight size={15} />
+                    </button>
+                  </div>
+
+                  {/* Dropdown Size & Màu chữ */}
+                  <div className="relative pr-1.5 mr-1 border-r border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setActiveDropdown(activeDropdown === 'size' ? null : 'size')}
+                      className="flex items-center gap-1 px-2 py-1 text-[11px] font-black text-slate-600 hover:bg-white rounded-lg transition-all"
+                    >
+                      <Type size={13} />
+                      <span>SIZE</span>
+                      <ChevronDown size={10} />
+                    </button>
+                    {activeDropdown === 'size' && (
+                      <div className="absolute top-full left-0 mt-1 w-36 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1">
+                        {FONT_SIZES.map(s => (
+                          <button
+                            key={s.label}
+                            type="button"
+                            onClick={() => applyStyle('font-size', s.value)}
+                            className="w-full px-3 py-1.5 text-left text-xs font-bold text-slate-600 hover:bg-indigo-50 hover:text-indigo-600"
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="relative pr-1.5 mr-1 border-r border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setActiveDropdown(activeDropdown === 'color' ? null : 'color')}
+                      className="flex items-center gap-1 px-2 py-1 text-[11px] font-black text-slate-600 hover:bg-white rounded-lg transition-all"
+                    >
+                      <Palette size={13} />
+                      <span>MÀU</span>
+                      <ChevronDown size={10} />
+                    </button>
+                    {activeDropdown === 'color' && (
+                      <div className="absolute top-full left-0 mt-1 w-44 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 grid grid-cols-3 gap-1.5">
+                        {COLORS.map(c => (
+                          <button
+                            key={c.label}
+                            type="button"
+                            onClick={() => applyStyle('color', c.value)}
+                            className={`w-full aspect-square ${c.bg} rounded-lg border border-slate-200 hover:scale-110 transition-transform`}
+                            title={c.label}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* NÚT CHÈN ẢNH TRỰC TIẾP (IMAGE UPLOAD MODAL) */}
+                  <button
+                    type="button"
+                    onClick={() => setIsImageModalOpen(true)}
+                    className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs ml-auto"
+                    title="Chèn ảnh trực tiếp / Tải lên ImgBB / Dán ảnh (Ctrl+V)"
+                  >
+                    <ImageIcon size={14} />
+                    <span className="font-black text-[11px] uppercase">Chèn ảnh</span>
+                  </button>
+                </div>
+
+                {/* KHU VỰC NHẬP LIỆU CUỘN DỌC (SCROLLABLE EDITOR FORM) */}
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar">
+                  
+                  {/* Phần A: Nội dung câu hỏi (Đề bài) */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
+                          Nội dung đề bài câu hỏi *
+                        </label>
+                        {activeEditorField === 'content' && (
+                          <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-indigo-50 text-indigo-600 border border-indigo-200">
+                            Đang soạn
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        {(modalForm.content || '').length} ký tự
+                      </span>
+                    </div>
+
+                    <textarea
+                      ref={contentTextareaRef}
+                      rows={7}
+                      value={modalForm.content || ''}
+                      onFocus={() => setActiveEditorField('content')}
+                      onChange={e => setModalForm({ ...modalForm, content: e.target.value })}
+                      onPaste={e => handleTextareaPaste(e, 'content')}
+                      placeholder="Nhập nội dung đề bài... Gõ Enter để xuống dòng tùy ý.&#10;Hỗ trợ công thức $k = 100\text{ N/m}$, $$E = \frac{1}{2}kA^2$$, dán ảnh trực tiếp (Ctrl+V)..."
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs sm:text-sm font-medium outline-none focus:border-indigo-500 focus:bg-white transition-all leading-relaxed custom-scrollbar selection:bg-indigo-100"
+                      required
+                    />
+
+                    {/* Hàng gắn ảnh đề bài */}
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                      <div className="flex items-center gap-1.5 text-slate-500 text-xs font-bold shrink-0">
+                        <ImageIcon size={14} className="text-indigo-600" />
+                        <span>Ảnh đề bài:</span>
+                      </div>
+                      <input
+                        type="text"
+                        value={modalForm.image_url || ''}
+                        onChange={e => setModalForm({ ...modalForm, image_url: e.target.value })}
+                        placeholder="Dán link ảnh hoặc tải ảnh lên từ máy..."
+                        className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-indigo-500"
+                      />
+                      <label className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold cursor-pointer transition-colors flex items-center justify-center gap-1 shrink-0 border border-indigo-200">
+                        <Upload size={13} />
+                        <span>{isUploadingImage ? 'Đang tải...' : 'Tải ảnh đề'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={e => handleUploadImage(e, 'image_url')}
+                          disabled={isUploadingImage}
+                        />
+                      </label>
+                      {modalForm.image_url && (
+                        <button
+                          type="button"
+                          onClick={() => setModalForm({ ...modalForm, image_url: '' })}
+                          className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg"
+                          title="Gỡ ảnh đề bài"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Phần B: 4 Phương án A, B, C, D (Nếu trắc nghiệm) */}
+                  {modalForm.question_type === 'multiple_choice' && (
+                    <div className="space-y-3 pt-3 border-t border-slate-100">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
+                          4 Phương án trắc nghiệm & Chọn đáp án đúng
+                        </label>
+                        <span className="text-[10px] text-slate-500">
+                          Tích chọn vào chữ cái <span className="font-bold text-emerald-600">A, B, C, D</span> để đặt đáp án đúng
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {['A', 'B', 'C', 'D'].map((letter, i) => {
+                          const isCorrect = modalForm.correct_answer === letter;
+                          return (
+                            <div
+                              key={letter}
+                              className={`flex items-center gap-2 p-2 rounded-xl border transition-all ${
+                                isCorrect
+                                  ? 'bg-emerald-50/60 border-emerald-300 ring-2 ring-emerald-500/20'
+                                  : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name="correct_radio_editor"
+                                checked={isCorrect}
+                                onChange={() => setModalForm({ ...modalForm, correct_answer: letter })}
+                                className="accent-emerald-600 w-4 h-4 cursor-pointer"
+                                title={`Đặt ${letter} là đáp án đúng`}
+                              />
+                              <span
+                                className={`w-6 h-6 rounded-lg font-black text-xs flex items-center justify-center shrink-0 cursor-pointer ${
+                                  isCorrect ? 'bg-emerald-600 text-white shadow-xs' : 'bg-slate-200 text-slate-700'
+                                }`}
+                                onClick={() => setModalForm({ ...modalForm, correct_answer: letter })}
+                              >
+                                {letter}
+                              </span>
+                              <input
+                                type="text"
+                                value={(modalForm.options || [])[i] || ''}
+                                onChange={e => {
+                                  const newOpts = [...(modalForm.options || ['', '', '', ''])];
+                                  newOpts[i] = e.target.value;
+                                  setModalForm({ ...modalForm, options: newOpts });
+                                }}
+                                placeholder={`Nội dung phương án ${letter} (VD: $x = 5\\text{ cm}$)...`}
+                                className="flex-1 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-indigo-500 transition-all"
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Phần C: Bài giải / Lời giải chi tiết */}
+                  <div className="space-y-2 pt-3 border-t border-slate-100">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                          Bài giải / Lời giải chi tiết & Phương pháp tư duy
+                        </label>
+                        {activeEditorField === 'solution' && (
+                          <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-amber-50 text-amber-600 border border-amber-200">
+                            Đang soạn
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        {(modalForm.solution || '').length} ký tự
+                      </span>
+                    </div>
+
+                    <textarea
+                      ref={solutionTextareaRef}
+                      rows={9}
+                      value={modalForm.solution || ''}
+                      onFocus={() => setActiveEditorField('solution')}
+                      onChange={e => setModalForm({ ...modalForm, solution: e.target.value })}
+                      onPaste={e => handleTextareaPaste(e, 'solution')}
+                      placeholder="Nhập các bước tư duy, công thức giải, bản chất vật lý, kết luận...&#10;Bước 1: Tính tần số góc $\\omega = \\sqrt{k/m}$...&#10;Bước 2: Sử dụng hệ thức độc lập thời gian...&#10;Bước 3: Suy ra đáp án cần chọn..."
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs sm:text-sm font-medium outline-none focus:border-indigo-500 focus:bg-white transition-all leading-relaxed custom-scrollbar selection:bg-amber-100"
+                    />
+
+                    {/* Hàng gắn ảnh minh họa lời giải */}
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                      <div className="flex items-center gap-1.5 text-slate-500 text-xs font-bold shrink-0">
+                        <ImageIcon size={14} className="text-amber-600" />
+                        <span>Hình vẽ lời giải:</span>
+                      </div>
+                      <input
+                        type="text"
+                        value={modalForm.solution_image_url || ''}
+                        onChange={e => setModalForm({ ...modalForm, solution_image_url: e.target.value })}
+                        placeholder="Dán link giản đồ vectơ, đồ thị bài giải..."
+                        className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium outline-none focus:border-indigo-500"
+                      />
+                      <label className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg text-xs font-bold cursor-pointer transition-colors flex items-center justify-center gap-1 shrink-0 border border-amber-200">
+                        <Upload size={13} />
+                        <span>{isUploadingImage ? 'Đang tải...' : 'Tải ảnh giải'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={e => handleUploadImage(e, 'solution_image_url')}
+                          disabled={isUploadingImage}
+                        />
+                      </label>
+                      {modalForm.solution_image_url && (
+                        <button
+                          type="button"
+                          onClick={() => setModalForm({ ...modalForm, solution_image_url: '' })}
+                          className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg"
+                          title="Gỡ ảnh lời giải"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              {/* === CỘT PHẢI: KHU VỰC LIVE PREVIEW (50% hoặc Full) === */}
+              <div className={`flex flex-col bg-slate-100/70 overflow-hidden transition-all ${
+                editorLayoutMode === 'edit' ? 'hidden' : editorLayoutMode === 'preview' ? 'w-full flex-1' : 'w-full lg:w-1/2 flex-1'
+              } ${mobileEditorTab === 'edit' ? 'hidden lg:flex' : 'flex'}`}>
+                
+                {/* Header thanh xem trước */}
+                <div className="px-4 py-3 bg-white border-b border-slate-200 flex items-center justify-between shrink-0 shadow-xs">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                      <Eye size={15} className="text-indigo-600" />
+                      XEM TRƯỚC HIỂN THỊ (LIVE PREVIEW)
+                    </span>
+                  </div>
+
+                  {/* Switch giữa xem toàn bộ và thử nghiệm học sinh */}
+                  <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewStudentMode(false)}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${
+                        !previewStudentMode ? 'bg-white text-indigo-600 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      Giáo viên (Đầy đủ)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPreviewStudentMode(true);
+                        setPreviewSelectedAnswer(null);
+                        setPreviewShowSolution(false);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${
+                        previewStudentMode ? 'bg-white text-emerald-600 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      Thử làm bài
+                    </button>
+                  </div>
+                </div>
+
+                {/* Vùng hiển thị xem trước cuộn dọc */}
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 custom-scrollbar">
+                  
+                  {/* Thẻ câu hỏi mô phỏng hiển thị trên trang chính */}
+                  <div className="bg-white rounded-3xl p-5 sm:p-7 shadow-sm border border-slate-200/80 space-y-5">
+                    
+                    {/* Hàng nhãn: Level, Chương, Nguồn */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wide ${
+                          modalForm.level === 'vdc' 
+                            ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                            : modalForm.level === 'hay_suutam'
+                            ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                            : modalForm.level === 'de_thi_thu'
+                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                            : 'bg-purple-50 text-purple-700 border border-purple-200'
+                        }`}>
+                          {modalForm.level === 'vdc' && '⚡ VẬN DỤNG CAO 9+'}
+                          {modalForm.level === 'hay_suutam' && '🌟 CÂU HAY SƯU TẦM'}
+                          {modalForm.level === 'de_thi_thu' && '🎯 ĐỀ THI THỬ CHỌN LỌC'}
+                          {modalForm.level === 'phuong_phap_la' && '💡 PHƯƠNG PHÁP ĐỘC LẠ'}
+                        </span>
+
+                        <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-700">
+                          {modalForm.chapter_title || 'Chưa chọn chương'}
+                        </span>
+                      </div>
+
+                      {modalForm.source && (
+                        <span className="text-[11px] font-bold text-slate-400 italic">
+                          Nguồn: {modalForm.source}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Tiêu đề dạng bài */}
+                    {modalForm.title && (
+                      <h4 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+                        {modalForm.title}
+                      </h4>
+                    )}
+
+                    {/* Nội dung câu hỏi đề bài */}
+                    <div className="text-sm sm:text-base text-slate-800 leading-relaxed font-normal">
+                      {modalForm.content ? (
+                        <RichMarkdownRenderer content={modalForm.content} onImageClick={setLightboxImage} />
+                      ) : (
+                        <p className="italic text-slate-400 py-4 text-center">
+                          Chưa có nội dung đề bài. Hãy nhập vào ô soạn thảo bên trái...
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Ảnh đề bài (nếu có) */}
+                    {modalForm.image_url && (
+                      <div className="py-2">
+                        <img
+                          src={modalForm.image_url}
+                          alt="Hình vẽ đề bài"
+                          className="max-h-72 object-contain rounded-2xl border border-slate-200 shadow-xs bg-slate-50 p-2"
+                        />
+                      </div>
+                    )}
+
+                    {/* 4 Phương án A, B, C, D */}
+                    {modalForm.question_type === 'multiple_choice' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                        {['A', 'B', 'C', 'D'].map((letter, i) => {
+                          const optText = (modalForm.options || [])[i] || '';
+                          const isCorrect = modalForm.correct_answer === letter;
+                          const isSelectedByStudent = previewSelectedAnswer === letter;
+
+                          return (
+                            <div
+                              key={letter}
+                              onClick={() => {
+                                if (previewStudentMode) {
+                                  setPreviewSelectedAnswer(letter);
+                                }
+                              }}
+                              className={`p-3 rounded-2xl border transition-all flex items-start gap-2.5 ${
+                                !previewStudentMode
+                                  ? isCorrect
+                                    ? 'bg-emerald-50/80 border-emerald-300 ring-2 ring-emerald-500/20 shadow-xs'
+                                    : 'bg-slate-50 border-slate-200'
+                                  : isSelectedByStudent
+                                  ? isCorrect
+                                    ? 'bg-emerald-50 border-emerald-400 text-emerald-900 ring-2 ring-emerald-500/30'
+                                    : 'bg-rose-50 border-rose-300 text-rose-900 ring-2 ring-rose-500/30'
+                                  : 'bg-slate-50 border-slate-200 hover:border-indigo-300 cursor-pointer'
+                              }`}
+                            >
+                              <span
+                                className={`w-7 h-7 rounded-xl font-black text-xs flex items-center justify-center shrink-0 ${
+                                  !previewStudentMode
+                                    ? isCorrect
+                                      ? 'bg-emerald-600 text-white shadow-xs'
+                                      : 'bg-slate-200 text-slate-700'
+                                    : isSelectedByStudent
+                                    ? isCorrect
+                                      ? 'bg-emerald-600 text-white'
+                                      : 'bg-rose-600 text-white'
+                                    : 'bg-slate-200 text-slate-700'
+                                }`}
+                              >
+                                {letter}
+                              </span>
+
+                              <div className="flex-1 text-xs sm:text-sm font-semibold pt-0.5 leading-relaxed">
+                                {optText ? (
+                                  <RichMarkdownRenderer content={optText} onImageClick={setLightboxImage} />
+                                ) : (
+                                  <span className="italic text-slate-400">Phương án {letter}...</span>
+                                )}
+                              </div>
+
+                              {!previewStudentMode && isCorrect && (
+                                <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-600 text-white shadow-xs shrink-0 self-center">
+                                  Đáp án đúng
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Phản hồi trong chế độ thử làm bài của học sinh */}
+                    {previewStudentMode && previewSelectedAnswer && (
+                      <div className={`p-3.5 rounded-2xl border text-xs flex items-center justify-between gap-3 animate-in fade-in duration-200 ${
+                        previewSelectedAnswer === modalForm.correct_answer
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                          : 'bg-rose-50 border-rose-200 text-rose-800'
+                      }`}>
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 size={18} className={previewSelectedAnswer === modalForm.correct_answer ? 'text-emerald-600' : 'text-rose-600'} />
+                          <span className="font-bold">
+                            {previewSelectedAnswer === modalForm.correct_answer
+                              ? 'Chính xác! Em đã chọn đúng đáp án.'
+                              : `Chưa chính xác! Đáp án đúng là ${modalForm.correct_answer}.`}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewShowSolution(!previewShowSolution)}
+                          className="px-3 py-1 bg-white rounded-xl text-xs font-bold shadow-xs hover:bg-slate-50 transition-colors"
+                        >
+                          {previewShowSolution ? 'Ẩn lời giải' : 'Xem lời giải'}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Hộp Lời Giải Chi Tiết */}
+                    {(!previewStudentMode || previewShowSolution) && (
+                      <div className="mt-4 pt-4 border-t border-slate-200 space-y-3">
+                        <div className="p-4 sm:p-6 bg-slate-900 text-slate-100 rounded-3xl shadow-xl space-y-4 border border-slate-800">
+                          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                            <div className="flex items-center gap-2">
+                              <Sparkles size={16} className="text-amber-400" />
+                              <span className="text-xs font-black uppercase tracking-wider text-amber-400">
+                                LỜI GIẢI CHI TIẾT & BƯỚC TƯ DUY
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-slate-400">
+                              Hiển thị KaTeX & Công thức
+                            </span>
+                          </div>
+
+                          <div className="text-xs sm:text-sm text-slate-200 leading-relaxed font-normal">
+                            {modalForm.solution ? (
+                              <RichMarkdownRenderer content={modalForm.solution} isInverted onImageClick={setLightboxImage} />
+                            ) : (
+                              <p className="italic text-slate-400">
+                                Lời giải chi tiết chưa được nhập. Hãy nhập các bước giải vào ô bên trái...
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Ảnh minh họa bài giải */}
+                          {modalForm.solution_image_url && (
+                            <div className="pt-3 border-t border-slate-800">
+                              <p className="text-[11px] font-bold text-slate-400 mb-2">Hình vẽ / Giản đồ bài giải:</p>
+                              <img
+                                src={modalForm.solution_image_url}
+                                alt="Hình vẽ minh họa lời giải"
+                                className="max-h-72 object-contain rounded-2xl bg-white p-2 border border-slate-700"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                  </div>
+                </div>
+
+              </div>
+
+            </form>
+
+            {/* 3. FOOTER BAR (THỐNG KÊ NHANH & NÚT HÀNH ĐỘNG) */}
+            <footer className="px-4 sm:px-6 py-2.5 bg-white border-t border-slate-200 flex items-center justify-between shrink-0 shadow-lg">
+              <div className="flex items-center gap-4 text-xs text-slate-500 font-medium">
+                <span className="hidden sm:inline">
+                  Trạng thái: <b className="text-indigo-600">{editingQuestion ? 'Đang sửa câu hỏi' : 'Tạo mới'}</b>
+                </span>
+                <span>
+                  Đề bài: <b>{(modalForm.content || '').trim().split(/\s+/).filter(Boolean).length}</b> từ
+                </span>
+                <span>
+                  Lời giải: <b>{(modalForm.solution || '').trim().split(/\s+/).filter(Boolean).length}</b> từ
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowQuestionModal(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
                 >
                   Hủy bỏ
                 </button>
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={handleSaveQuestion}
                   disabled={isSaving}
-                  className={`px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md shadow-indigo-100 flex items-center gap-2 transition-all disabled:opacity-50`}
+                  className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md shadow-indigo-100 flex items-center gap-2 transition-all disabled:opacity-50"
                 >
                   {isSaving ? <RefreshCw size={14} className="animate-spin" /> : <Check size={16} />}
                   <span>{editingQuestion ? 'Lưu thay đổi' : 'Đưa lên ngay'}</span>
                 </button>
               </div>
-            </form>
+            </footer>
+
           </div>
         </div>
       )}
@@ -2231,6 +3249,14 @@ ON public.vdc_questions FOR DELETE USING (true);
           </div>
         </div>
       )}
+
+      {/* 8. MODAL CHÈN ẢNH TRỰC TIẾP (ImgBB, Dán Clipboard, URL) */}
+      <ImageUploadModal 
+        isOpen={isImageModalOpen}
+        onClose={() => setIsImageModalOpen(false)}
+        onInsert={handleInsertImageSnippet}
+        isAdmin={isAdmin}
+      />
     </div>
   );
 };
