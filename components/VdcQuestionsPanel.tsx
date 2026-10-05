@@ -49,7 +49,9 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
-  Code
+  Code,
+  Subscript,
+  Superscript
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -69,8 +71,12 @@ const MATH_FORMULAS = [
   { label: 'PHÂN SỐ', display: 'a/b', value: '$\\frac{a}{b}$' },
   { label: 'CĂN BẬC 2', display: '√x', value: '$\\sqrt{x}$' },
   { label: 'CĂN BẬC N', display: 'ⁿ√x', value: '$\\sqrt[n]{x}$' },
-  { label: 'MŨ', display: 'xⁿ', value: '$x^{n}$' },
-  { label: 'CHỈ SỐ DƯỚI', display: 'xi', value: '$x_{i}$' },
+  { label: 'MŨ / LŨY THỪA', display: 'x²', value: '$x^{2}$' },
+  { label: 'CHỈ SỐ DƯỚI', display: 'x₁', value: '$x_{1}$' },
+  { label: 'VẬN TỐC ĐẦU', display: 'v₀', value: '$v_{0}$' },
+  { label: 'GIA TỐC', display: 'm/s²', value: '$\\text{m/s}^2$' },
+  { label: '10 MŨ ÂM', display: '10⁻³', value: '$10^{-3}$' },
+  { label: 'CHỈ SỐ MAX', display: 'xmax', value: '$x_{\\max}$' },
   { label: 'VECTOR', display: '→v', value: '$\\vec{v}$' },
   { label: 'LỰC VECTOR', display: '→F', value: '$\\vec{F}$' },
   { label: 'TẦN SỐ GÓC', display: 'ω', value: '$\\omega$' },
@@ -86,7 +92,6 @@ const MATH_FORMULAS = [
   { label: 'TÍCH PHÂN (∫)', display: '∫', value: '$\\int_{a}^{b}$' },
   { label: 'GIỚI HẠN (LIM)', display: 'lim', value: '$\\lim_{x \\to \\infty}$' },
   { label: 'ĐƠN VỊ VẬN TỐC', display: 'm/s', value: '$\\text{m/s}$' },
-  { label: 'GIA TỐC', display: 'm/s²', value: '$\\text{m/s}^2$' },
 ];
 
 const FONT_SIZES = [
@@ -119,78 +124,16 @@ interface RichMarkdownRendererProps {
 const RichMarkdownRenderer: React.FC<RichMarkdownRendererProps> = ({
   content,
   className = '',
-  isInverted = false,
-  onImageClick
+  isInverted = false
 }) => {
   if (!content) return null;
 
-  // 1. Chuẩn hóa link ảnh Google Drive trong markdown ![alt](drive_url)
-  let processed = content.replace(
-    /!\[([^\]]*)\]\((https:\/\/(?:drive|docs)\.google\.com\/(?:file\/d\/|open\?id=|uc\?[^)]*id=)([a-zA-Z0-9_-]+)[^)]*)\)/g,
-    (_match, alt, _fullUrl, fileId) => `![${alt}](https://lh3.googleusercontent.com/d/${fileId})`
-  );
-
-  // 2. Chuyển URL ảnh đứng riêng 1 dòng thành ảnh markdown
-  processed = processed.replace(
-    /(?:^|\n)(https?:\/\/[^\s]+?\.(?:png|jpe?g|gif|webp|svg|bmp)(?:\?[^\s]*)?)(?=\n|$)/gi,
-    '\n![Hình ảnh]($1)\n'
-  );
-
-  // 3. Chuyển URL Google Drive đứng riêng 1 dòng thành ảnh markdown
-  processed = processed.replace(
-    /(?:^|\n)https:\/\/(?:drive|docs)\.google\.com\/(?:file\/d\/|open\?id=|uc\?[^)]*id=)([a-zA-Z0-9_-]+)[^\s]*(?=\n|$)/gi,
-    '\n![Hình ảnh Drive](https://lh3.googleusercontent.com/d/$1)\n'
-  );
-
   return (
     <div 
-      className={`prose ${isInverted ? 'prose-invert text-slate-100 prose-p:text-slate-100 prose-headings:text-amber-300 prose-strong:text-white prose-li:text-slate-200' : 'prose-slate text-slate-800'} max-w-none leading-relaxed prose-p:my-1 prose-headings:my-2 prose-img:my-2 ${className}`}
+      className={`leading-relaxed whitespace-pre-line ${isInverted ? 'text-slate-100' : 'text-slate-800'} ${className}`}
       style={isInverted ? { color: '#f8fafc' } : undefined}
     >
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
-        rehypePlugins={[rehypeRaw, rehypeKatex]}
-        components={{
-          p: ({ node, ...props }) => (
-            <p {...props} className={isInverted ? 'text-slate-100 my-1' : 'my-1'} style={isInverted ? { color: '#f8fafc' } : undefined} />
-          ),
-          span: ({ node, ...props }) => (
-            <span {...props} style={isInverted && !props.style?.color ? { color: '#f8fafc' } : props.style} />
-          ),
-          li: ({ node, ...props }) => (
-            <li {...props} className={isInverted ? 'text-slate-200' : ''} style={isInverted ? { color: '#e2e8f0' } : undefined} />
-          ),
-          strong: ({ node, ...props }) => (
-            <strong {...props} className={isInverted ? 'text-white font-bold' : 'font-bold'} style={isInverted ? { color: '#ffffff' } : undefined} />
-          ),
-          img: ({ node, ...props }) => {
-            const src = props.src || '';
-            return (
-              <span className="block my-2.5">
-                <img
-                  {...props}
-                  className="max-h-80 sm:max-h-96 max-w-full object-contain rounded-2xl border border-slate-200/80 shadow-xs bg-slate-50 cursor-pointer hover:shadow-md hover:scale-[1.01] transition-all mx-auto"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (src && onImageClick) onImageClick(src);
-                  }}
-                  title="Nhấn để phóng to ảnh"
-                />
-              </span>
-            );
-          },
-          a: ({ node, ...props }) => (
-            <a
-              {...props}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={isInverted ? 'text-blue-300 hover:text-blue-200 underline font-semibold transition-colors' : 'text-indigo-500 hover:text-indigo-700 underline font-semibold transition-colors'}
-            />
-          ),
-        }}
-      >
-        {processed}
-      </ReactMarkdown>
+      {renderLatex(content)}
     </div>
   );
 };
@@ -1902,19 +1845,19 @@ ON public.vdc_questions FOR DELETE USING (true);
                         {/* Ảnh đề bài (nếu có) */}
                         {q.image_url && (
                           <div className="pt-2">
-                            <div className="relative inline-block group rounded-2xl overflow-hidden border border-slate-200 bg-slate-50">
+                            <div className="relative block group rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 max-w-4xl mx-auto shadow-sm">
                               <img
                                 src={q.image_url}
                                 alt="Hình minh họa đề bài"
-                                className="max-h-80 object-contain rounded-2xl cursor-pointer transition-transform group-hover:scale-[1.01]"
+                                className="w-full max-h-[85vh] object-contain rounded-2xl cursor-pointer transition-transform group-hover:scale-[1.005]"
                                 onClick={() => setLightboxImage(q.image_url!)}
                               />
                               <button
                                 onClick={() => setLightboxImage(q.image_url!)}
-                                className="absolute bottom-2 right-2 p-1.5 bg-black/60 hover:bg-black/80 text-white rounded-lg backdrop-blur-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                                className="absolute bottom-3 right-3 px-3 py-1.5 bg-black/70 hover:bg-black/90 text-white rounded-xl text-xs font-bold backdrop-blur-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 shadow-lg"
                                 title="Xem ảnh lớn"
                               >
-                                <Maximize2 size={14} />
+                                <Maximize2 size={14} /> Phóng to
                               </button>
                             </div>
                           </div>
@@ -2015,13 +1958,23 @@ ON public.vdc_questions FOR DELETE USING (true);
                             {/* Ảnh minh họa bài giải (nếu có) */}
                             {q.solution_image_url && (
                               <div className="pt-3 border-t border-slate-800/80">
-                                <p className="text-[11px] font-bold text-slate-400 mb-2">Hình vẽ / Giản đồ lời giải:</p>
-                                <img
-                                  src={q.solution_image_url}
-                                  alt="Hình vẽ minh họa lời giải"
-                                  className="max-h-80 object-contain rounded-xl bg-white p-2 border border-slate-700 cursor-pointer"
-                                  onClick={() => setLightboxImage(q.solution_image_url!)}
-                                />
+                                <div className="flex items-center justify-between mb-2">
+                                  <p className="text-[11px] font-bold text-slate-400">Hình vẽ / Giản đồ / Bài giải đính kèm:</p>
+                                  <button
+                                    onClick={() => setLightboxImage(q.solution_image_url!)}
+                                    className="text-[10px] font-black uppercase text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Maximize2 size={12} /> Bấm để phóng to
+                                  </button>
+                                </div>
+                                <div className="relative group rounded-2xl overflow-hidden border border-slate-700/80 bg-white p-1 max-w-4xl mx-auto shadow-xl">
+                                  <img
+                                    src={q.solution_image_url}
+                                    alt="Hình vẽ minh họa lời giải"
+                                    className="w-full max-h-[85vh] object-contain rounded-xl cursor-pointer hover:opacity-95 transition-opacity"
+                                    onClick={() => setLightboxImage(q.solution_image_url!)}
+                                  />
+                                </div>
                               </div>
                             )}
                           </div>
@@ -2372,6 +2325,22 @@ ON public.vdc_questions FOR DELETE USING (true);
                       title="Gạch chân (Underline)"
                     >
                       <Underline size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => wrapText('<sub>', '</sub>')}
+                      className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
+                      title="Chỉ số dưới (Subscript, ví dụ: x₁ hoặc v₀)"
+                    >
+                      <Subscript size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => wrapText('<sup>', '</sup>')}
+                      className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-white rounded-lg transition-all"
+                      title="Chỉ số trên / Mũ (Superscript, ví dụ: x² hoặc 10⁻³)"
+                    >
+                      <Superscript size={15} />
                     </button>
                     <button
                       type="button"
@@ -2878,7 +2847,8 @@ ON public.vdc_questions FOR DELETE USING (true);
                         <img
                           src={modalForm.image_url}
                           alt="Hình vẽ đề bài"
-                          className="max-h-72 object-contain rounded-2xl border border-slate-200 shadow-xs bg-slate-50 p-2"
+                          className="w-full max-w-4xl max-h-[85vh] object-contain rounded-2xl border border-slate-200 shadow-xs bg-slate-50 p-1 mx-auto block cursor-pointer"
+                          onClick={() => setLightboxImage(modalForm.image_url!)}
                         />
                       </div>
                     )}
@@ -3004,7 +2974,8 @@ ON public.vdc_questions FOR DELETE USING (true);
                               <img
                                 src={modalForm.solution_image_url}
                                 alt="Hình vẽ minh họa lời giải"
-                                className="max-h-72 object-contain rounded-2xl bg-white p-2 border border-slate-700"
+                                className="w-full max-w-4xl max-h-[85vh] object-contain rounded-2xl bg-white p-1 border border-slate-700 mx-auto block cursor-pointer"
+                                onClick={() => setLightboxImage(modalForm.solution_image_url!)}
                               />
                             </div>
                           )}
