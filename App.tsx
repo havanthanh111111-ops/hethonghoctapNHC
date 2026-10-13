@@ -84,6 +84,8 @@ const DEFAULT_SUBJECTS: Subject[] = [
   { id: 10, label: 'Vật Lý 10', color: 'bg-emerald-600', shadow: 'shadow-emerald-100', theme: 'emerald', password: '123', bgUrl: 'https://images.unsplash.com/photo-1507608869274-d3177c8bb4c7?auto=format&fit=crop&w=2000&q=80' },
   { id: 11, label: 'Vật Lý 11', color: 'bg-indigo-600', shadow: 'shadow-indigo-100', theme: 'indigo', password: '123', bgUrl: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=2000&q=80' },
   { id: 12, label: 'Vật Lý 12', color: 'bg-rose-600', shadow: 'shadow-rose-100', theme: 'rose', password: '123', bgUrl: 'https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?auto=format&fit=crop&w=2000&q=80' },
+  { id: 446356, label: 'Ngữ Văn 10', color: 'bg-violet-600', shadow: 'shadow-violet-100', theme: 'violet', layout: 'layout1', password: '123', bgUrl: 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&w=2000&q=80' },
+  { id: 446462, label: 'Ngữ Văn 11', color: 'bg-amber-600', shadow: 'shadow-amber-100', theme: 'amber', layout: 'layout1', password: '123', bgUrl: 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&w=2000&q=80' },
 ];
 
 const App: React.FC = () => {
