@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
-import { Book, Plus, Maximize2, Loader2, BrainCircuit, GraduationCap, ShieldCheck, Search, LogOut, Folder, Globe, Zap, Image as ImageIcon, Settings, ArrowLeft, ArrowRight, Upload, AlertCircle, Users } from 'lucide-react';
+import { Book, Plus, Maximize2, Loader2, BrainCircuit, GraduationCap, ShieldCheck, Search, LogOut, Folder, Globe, Zap, Image as ImageIcon, Settings, ArrowLeft, ArrowRight, Upload, AlertCircle, Users, Share2, Sparkles } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { AppData, ResourceLink, BookNode, NodeType, Student, Subject } from './types';
 import { INITIAL_DATA } from './constants';
@@ -18,6 +18,8 @@ import HomeworkPanel from './components/HomeworkPanel';
 import { SuperAdminView } from './components/SuperAdminView';
 import { TopHorizontalNavbar } from './components/TopHorizontalNavbar';
 import ConfirmModal from './components/ConfirmModal';
+import { DriveUploader } from './components/DriveUploader';
+import { VdcQuestionsPanel } from './components/VdcQuestionsPanel';
 
 import { getSafeEnv, SLOGANS } from './utils';
 
@@ -67,19 +69,56 @@ class ErrorBoundary extends React.Component<any, any> {
 const TEACHER_PWD = getSafeEnv('TEACHER_PASSWORD') || '123';
 const SUPER_ADMIN_PWD = getSafeEnv('SUPER_ADMIN_PASSWORD') || 'super123';
 
+const BACKGROUND_PRESETS_LIST = [
+  { label: 'Lưới Điện tử phát sáng (Cyber Grid)', value: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Quang phổ Cơ lượng tử (Quantum Light)', value: 'https://images.unsplash.com/photo-1507608869274-d3177c8bb4c7?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Sương mù Vũ trụ & Tinh vân (Cosmic Nebula)', value: 'https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Nguyên tử & Vũ trụ học (Cosmos Physics)', value: 'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Nghệ thuật trừu tượng lướt nước (Abstract Satin)', value: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Phòng Lab thông tin & Trí tuệ AI (AI Circuits)', value: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Học tập & Giá sách học giả (Sleek Bookshelf)', value: 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&w=2000&q=80' },
+  { label: 'Cực quang huyền biến (Mystic Aurora)', value: 'https://images.unsplash.com/photo-1531315630201-bb15abeb1653?auto=format&fit=crop&w=2000&q=80' }
+];
+
 const DEFAULT_SUBJECTS: Subject[] = [
-  { id: 10, label: 'Vật Lý 10', color: 'bg-emerald-600', shadow: 'shadow-emerald-100', theme: 'emerald', password: '123' },
-  { id: 11, label: 'Vật Lý 11', color: 'bg-indigo-600', shadow: 'shadow-indigo-100', theme: 'indigo', password: '123' },
-  { id: 12, label: 'Vật Lý 12', color: 'bg-rose-600', shadow: 'shadow-rose-100', theme: 'rose', password: '123' },
+  { id: 10, label: 'Vật Lý 10', color: 'bg-emerald-600', shadow: 'shadow-emerald-100', theme: 'emerald', password: '123', bgUrl: 'https://images.unsplash.com/photo-1507608869274-d3177c8bb4c7?auto=format&fit=crop&w=2000&q=80' },
+  { id: 11, label: 'Vật Lý 11', color: 'bg-indigo-600', shadow: 'shadow-indigo-100', theme: 'indigo', password: '123', bgUrl: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=2000&q=80' },
+  { id: 12, label: 'Vật Lý 12', color: 'bg-rose-600', shadow: 'shadow-rose-100', theme: 'rose', password: '123', bgUrl: 'https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?auto=format&fit=crop&w=2000&q=80' },
+  { id: 446356, label: 'Ngữ Văn 10', color: 'bg-violet-600', shadow: 'shadow-violet-100', theme: 'violet', layout: 'layout1', password: '123', bgUrl: 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&w=2000&q=80' },
+  { id: 446462, label: 'Ngữ Văn 11', color: 'bg-amber-600', shadow: 'shadow-amber-100', theme: 'amber', layout: 'layout1', password: '123', bgUrl: 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&w=2000&q=80' },
 ];
 
 const App: React.FC = () => {
+  const navigate = useNavigate();
   const [subjects, setSubjects] = useState<Subject[]>(() => {
     const saved = localStorage.getItem('subjects_config');
     return saved ? JSON.parse(saved) : DEFAULT_SUBJECTS;
   });
 
+  const [landingBgUrl, setLandingBgUrl] = useState<string>(() => {
+    return localStorage.getItem('landing_bg_url') || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=2000&q=80';
+  });
+
+  const [globalGasDriveUrl, setGlobalGasDriveUrl] = useState<string>(() => {
+    return localStorage.getItem('gas_drive_script_url') || '';
+  });
+
   const [selectedGrade, setSelectedGrade] = useState<number | null>(() => {
+    const queryParams = new URLSearchParams(window.location.search);
+    let urlGrade = queryParams.get('subject') || queryParams.get('grade');
+    if (!urlGrade && window.location.hash.includes('?')) {
+      const hashQuery = window.location.hash.split('?')[1];
+      const hashParams = new URLSearchParams(hashQuery);
+      urlGrade = hashParams.get('subject') || hashParams.get('grade');
+    }
+    if (urlGrade) {
+      const parsed = parseInt(urlGrade);
+      if (!isNaN(parsed)) {
+        localStorage.setItem('selected_grade', parsed.toString());
+        return parsed;
+      }
+    }
+
     const saved = localStorage.getItem('selected_grade');
     if (saved === '1') return 11; // Migrate Khối 11 from ID 1 to ID 11
     return saved ? parseInt(saved) : null;
@@ -98,14 +137,24 @@ const App: React.FC = () => {
           .select('data')
           .eq('id', 999)
           .maybeSingle();
-        if (!error && config?.data?.subjects) {
-          setSubjects(config.data.subjects);
-          localStorage.setItem('subjects_config', JSON.stringify(config.data.subjects));
-        } else if (!config?.data?.subjects) {
-          // If not configured, initialize default subjects in DB
+        if (!error && config?.data) {
+          if (config.data.subjects) {
+            setSubjects(config.data.subjects);
+            localStorage.setItem('subjects_config', JSON.stringify(config.data.subjects));
+          }
+          if (config.data.landingBgUrl) {
+            setLandingBgUrl(config.data.landingBgUrl);
+            localStorage.setItem('landing_bg_url', config.data.landingBgUrl);
+          }
+          if (config.data.gasDriveUrl) {
+            setGlobalGasDriveUrl(config.data.gasDriveUrl);
+            localStorage.setItem('gas_drive_script_url', config.data.gasDriveUrl);
+          }
+        } else if (!config?.data) {
+          // If not configured, initialize default subjects & background in DB
           await supabase
             .from('app_settings')
-            .upsert({ id: 999, data: { subjects: DEFAULT_SUBJECTS } });
+            .upsert({ id: 999, data: { subjects: DEFAULT_SUBJECTS, landingBgUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=2000&q=80', gasDriveUrl: globalGasDriveUrl } });
         }
       } catch (err) {
         console.error('Error fetching subjects config:', err);
@@ -118,9 +167,34 @@ const App: React.FC = () => {
     setSubjects(updated);
     localStorage.setItem('subjects_config', JSON.stringify(updated));
     try {
-      await supabase.from('app_settings').upsert({ id: 999, data: { subjects: updated } });
+      await supabase.from('app_settings').upsert({ id: 999, data: { subjects: updated, landingBgUrl, gasDriveUrl: globalGasDriveUrl } });
     } catch (err) {
       console.error("Error saving subjects config in DB:", err);
+    }
+  };
+
+  const handleSaveLandingBgUrl = async (url: string) => {
+    setLandingBgUrl(url);
+    localStorage.setItem('landing_bg_url', url);
+    try {
+      await supabase.from('app_settings').upsert({ id: 999, data: { subjects, landingBgUrl: url, gasDriveUrl: globalGasDriveUrl } });
+    } catch (err) {
+      console.error("Error saving landing bg url in DB:", err);
+    }
+  };
+
+  const handleSaveGasDriveUrl = async (url: string) => {
+    const trimmed = url.trim();
+    setGlobalGasDriveUrl(trimmed);
+    if (trimmed) {
+      localStorage.setItem('gas_drive_script_url', trimmed);
+    } else {
+      localStorage.removeItem('gas_drive_script_url');
+    }
+    try {
+      await supabase.from('app_settings').upsert({ id: 999, data: { subjects, landingBgUrl, gasDriveUrl: trimmed } });
+    } catch (err) {
+      console.error("Error saving gasDriveUrl in DB:", err);
     }
   };
 
@@ -135,6 +209,56 @@ const App: React.FC = () => {
          });
     }
   }, [selectedGrade]);
+
+  useEffect(() => {
+    const queryParams = new URLSearchParams(window.location.search);
+    let urlGrade = queryParams.get('subject') || queryParams.get('grade');
+    let urlNode = queryParams.get('node');
+    if (!urlGrade && window.location.hash.includes('?')) {
+      const hashQuery = window.location.hash.split('?')[1];
+      const hashParams = new URLSearchParams(hashQuery);
+      urlGrade = hashParams.get('subject') || hashParams.get('grade');
+      urlNode = hashParams.get('node');
+    }
+
+    if (urlGrade && urlNode) {
+      const parsedGrade = parseInt(urlGrade);
+      if (!isNaN(parsedGrade)) {
+        // 1. Ensure the correct subject/grade is selected
+        if (selectedGrade !== parsedGrade) {
+          setSelectedGrade(parsedGrade);
+          localStorage.setItem('selected_grade', parsedGrade.toString());
+        }
+
+        // 2. Decide student/teacher routing
+        const isTeacher = localStorage.getItem('teacher_auth') === 'true';
+        if (isTeacher) {
+          if (window.location.pathname === '/' || window.location.pathname === '') {
+            navigate(`/teacher?subject=${parsedGrade}&node=${urlNode}`, { replace: true });
+          }
+        } else {
+          if (!student) {
+            const savedId = localStorage.getItem('student_auth_id');
+            if (!savedId) {
+              const timestamp = Date.now().toString();
+              const guestId = `00000000-0000-4000-a000-${timestamp.slice(-12).padStart(12, '0')}`;
+              const guestStudent: Student = {
+                id: guestId,
+                name: 'Khách',
+                full_name: 'Khách vãng lai',
+                grade_id: parsedGrade,
+                is_guest: true
+              };
+              setStudent(guestStudent);
+            }
+          }
+          if (window.location.pathname === '/' || window.location.pathname === '') {
+            navigate(`/student?subject=${parsedGrade}&node=${urlNode}`, { replace: true });
+          }
+        }
+      }
+    }
+  }, [selectedGrade, student, navigate]);
 
   const handleSelectGrade = (grade: number | null) => {
     setSelectedGrade(grade);
@@ -268,10 +392,10 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary>
       <Routes>
-        <Route path="/" element={<LandingPage visitorCount={visitorCount} onSelectGrade={handleSelectGrade} selectedGrade={selectedGrade} subjects={subjects} />} />
-        <Route path="/super" element={<SuperProtectedRoute><SuperAdminView subjects={subjects} onSaveSubjects={handleSaveSubjects} visitorCount={visitorCount} /></SuperProtectedRoute>} />
-        <Route path="/teacher" element={<ProtectedRoute><MainView isAdmin={true} data={data} updateData={updateData} isSyncing={isSyncing} visitorCount={visitorCount} selectedGrade={selectedGrade} syncError={syncError} fetchCloudData={fetchCloudData} student={null} subjects={subjects} /></ProtectedRoute>} />
-        <Route path="/student" element={student ? <MainView isAdmin={false} data={data} updateData={updateData} isSyncing={isSyncing} visitorCount={visitorCount} selectedGrade={selectedGrade} syncError={syncError} fetchCloudData={fetchCloudData} student={student} onLogout={() => { setStudent(null); localStorage.removeItem('student_auth_id'); }} subjects={subjects} /> : <StudentLogin onLogin={setStudent} gradeId={selectedGrade || 11} themeColor={subjects.find(s => s.id === selectedGrade)?.theme || 'indigo'} />} />
+        <Route path="/" element={<LandingPage visitorCount={visitorCount} onSelectGrade={handleSelectGrade} selectedGrade={selectedGrade} subjects={subjects} landingBgUrl={landingBgUrl} />} />
+        <Route path="/super" element={<SuperProtectedRoute><SuperAdminView subjects={subjects} onSaveSubjects={handleSaveSubjects} visitorCount={visitorCount} landingBgUrl={landingBgUrl} onSaveLandingBgUrl={handleSaveLandingBgUrl} gasDriveUrl={globalGasDriveUrl} onSaveGasDriveUrl={handleSaveGasDriveUrl} /></SuperProtectedRoute>} />
+        <Route path="/teacher" element={<ProtectedRoute><MainView isAdmin={true} data={data} updateData={updateData} isSyncing={isSyncing} visitorCount={visitorCount} selectedGrade={selectedGrade} syncError={syncError} fetchCloudData={fetchCloudData} student={null} subjects={subjects} onSaveSubjects={handleSaveSubjects} /></ProtectedRoute>} />
+        <Route path="/student" element={student ? <MainView isAdmin={false} data={data} updateData={updateData} isSyncing={isSyncing} visitorCount={visitorCount} selectedGrade={selectedGrade} syncError={syncError} fetchCloudData={fetchCloudData} student={student} onLogout={() => { setStudent(null); localStorage.removeItem('student_auth_id'); navigate('/', { replace: true }); }} subjects={subjects} onSaveSubjects={handleSaveSubjects} /> : <StudentLogin onLogin={setStudent} gradeId={selectedGrade || 11} themeColor={subjects.find(s => s.id === selectedGrade)?.theme || 'indigo'} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ErrorBoundary>
@@ -289,7 +413,7 @@ const SuperProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children
 };
 
 
-const LandingPage: React.FC<{ visitorCount: number, onSelectGrade: (g: number) => void, selectedGrade: number | null, subjects: Subject[] }> = ({ visitorCount, onSelectGrade, selectedGrade, subjects }) => {
+const LandingPage: React.FC<{ visitorCount: number, onSelectGrade: (g: number) => void, selectedGrade: number | null, subjects: Subject[], landingBgUrl: string }> = ({ visitorCount, onSelectGrade, selectedGrade, subjects, landingBgUrl }) => {
   const [showPass, setShowPass] = useState(false);
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
@@ -343,18 +467,33 @@ const LandingPage: React.FC<{ visitorCount: number, onSelectGrade: (g: number) =
   const currentSubject = subjects.find(s => s.id === selectedGrade);
   const themeColor = currentSubject?.theme || 'indigo';
 
+  const currentBgUrl = useMemo(() => {
+    if (selectedGrade === 999) return "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=2000&q=80";
+    if (currentSubject?.bgUrl) return currentSubject.bgUrl;
+    if (activeSubjectGroup) {
+      const groupSub = groupedSubjects[activeSubjectGroup]?.[0];
+      if (groupSub?.bgUrl) return groupSub.bgUrl;
+    }
+    return landingBgUrl;
+  }, [selectedGrade, currentSubject, activeSubjectGroup, groupedSubjects, landingBgUrl]);
+
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const subjectPwd = currentSubject?.password || TEACHER_PWD;
-
-    if (pin === SUPER_ADMIN_PWD) {
-      localStorage.setItem('super_auth', 'true');
-      navigate('/super');
-    } else if (pin === subjectPwd || pin === TEACHER_PWD) {
-      localStorage.setItem('teacher_auth', 'true');
-      navigate('/teacher');
+    if (selectedGrade === 999) {
+      if (pin === SUPER_ADMIN_PWD) {
+        localStorage.setItem('super_auth', 'true');
+        navigate('/super');
+      } else {
+        setError(true);
+      }
     } else {
-      setError(true);
+      const subjectPwd = currentSubject?.password || TEACHER_PWD;
+      if (pin === subjectPwd) {
+        localStorage.setItem('teacher_auth', 'true');
+        navigate('/teacher');
+      } else {
+        setError(true);
+      }
     }
   };
 
@@ -381,7 +520,18 @@ const LandingPage: React.FC<{ visitorCount: number, onSelectGrade: (g: number) =
   };
 
   return (
-    <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50 overflow-hidden relative text-center px-4">
+    <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-900 overflow-hidden relative text-center px-4">
+      {/* Dynamic Background Image with smooth transition - fully visible & vibrant */}
+      <div 
+        className="absolute inset-0 bg-cover bg-center transition-all duration-1000 ease-in-out scale-100 opacity-80 pointer-events-none"
+        style={{ backgroundImage: `url(${currentBgUrl})` }}
+      />
+      {/* Subtle modern dark overlay to ensure excellent white cards and text contrast */}
+      <div className="absolute inset-0 bg-gradient-to-b from-slate-900/30 via-slate-950/20 to-slate-950/40 pointer-events-none" />
+      
+      {/* Subtle modern mathematical/technological grid overlay */}
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff02_1px,transparent_1px),linear-gradient(to_bottom,#ffffff03_1px,transparent_1px)] bg-[size:4rem_4rem] pointer-events-none" />
+
       {selectedGrade && (
         <button 
           onClick={() => {
@@ -420,10 +570,10 @@ const LandingPage: React.FC<{ visitorCount: number, onSelectGrade: (g: number) =
       )}
 
       <div className="relative z-10 flex flex-col items-center w-full max-w-4xl">
-        <div className="mb-8 p-5 bg-white border border-slate-200 shadow-sm rounded-3xl">
+        <div className="mb-8 p-5 bg-white/95 border border-white/50 backdrop-blur-md shadow-lg rounded-3xl">
             <Book size={48} className={selectedGrade ? (selectedGrade === 999 ? 'text-amber-500 animate-bounce' : `text-${themeColor}-600`) : (activeSubjectGroup ? `text-${getGroupTheme(groupedSubjects[activeSubjectGroup])}-600` : 'text-slate-400')}/>
         </div>
-        <h1 className="text-2xl md:text-5xl font-black text-slate-900 uppercase mb-12 tracking-tighter">
+        <h1 className="text-2xl md:text-5xl font-black text-white uppercase mb-12 tracking-tighter drop-shadow-md">
           {selectedGrade === 999 
             ? 'QUẢN TRỊ VIÊN TỐI CAO' 
             : selectedGrade 
@@ -482,7 +632,10 @@ const LandingPage: React.FC<{ visitorCount: number, onSelectGrade: (g: number) =
           <div className="max-w-md w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
             <form onSubmit={handleLoginSubmit} 
               className="bg-white p-10 rounded-[40px] shadow-2xl border border-amber-100 flex flex-col items-center space-y-6">
-              <input type="password" autoFocus value={pin} onChange={(e)=>{setPin(e.target.value); setError(false);}} className={`w-full px-4 py-5 bg-slate-50 border-2 rounded-2xl text-center font-black text-2xl tracking-[0.5em] ${error?'border-red-400 animate-shake':'border-transparent focus:border-amber-400 outline-none'}`} placeholder="****" autoComplete="current-password"/>
+              <div className="w-full">
+                <input type="password" autoFocus value={pin} onChange={(e)=>{setPin(e.target.value); setError(false);}} className={`w-full px-4 py-5 bg-slate-50 border-2 rounded-2xl text-center font-black text-2xl tracking-[0.5em] ${error?'border-red-400 animate-shake':'border-transparent focus:border-amber-400 outline-none'}`} placeholder="****" autoComplete="current-password"/>
+                {error && <p className="text-[10px] text-red-500 font-bold uppercase tracking-wider mt-2">Mã PIN Super Admin không đúng!</p>}
+              </div>
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">
                 Nhập mã PIN tối cao để quản trị toàn cục
               </div>
@@ -513,7 +666,10 @@ const LandingPage: React.FC<{ visitorCount: number, onSelectGrade: (g: number) =
             ) : (
               <form onSubmit={handleLoginSubmit} 
                 className="bg-white p-10 rounded-[40px] shadow-2xl border border-amber-100 flex flex-col items-center space-y-6 animate-in zoom-in-95">
-                <input type="password" autoFocus value={pin} onChange={(e)=>{setPin(e.target.value); setError(false);}} className={`w-full px-4 py-5 bg-slate-50 border-2 rounded-2xl text-center font-black text-2xl tracking-[0.5em] ${error?'border-red-400 animate-shake':'border-transparent focus:border-amber-400 outline-none'}`} placeholder="****" autoComplete="current-password"/>
+                <div className="w-full">
+                  <input type="password" autoFocus value={pin} onChange={(e)=>{setPin(e.target.value); setError(false);}} className={`w-full px-4 py-5 bg-slate-50 border-2 rounded-2xl text-center font-black text-2xl tracking-[0.5em] ${error?'border-red-400 animate-shake':'border-transparent focus:border-amber-400 outline-none'}`} placeholder="****" autoComplete="current-password"/>
+                  {error && <p className="text-[10px] text-red-500 font-bold uppercase tracking-wider mt-2">Mã PIN Giáo viên không chính xác!</p>}
+                </div>
                 <div className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider text-center">
                   Nhập mã của giáo viên môn hoặc Super Admin
                 </div>
@@ -542,13 +698,58 @@ const MainView: React.FC<{
   student: Student | null;
   onLogout?: () => void;
   subjects: Subject[];
-}> = ({ isAdmin, data, updateData, isSyncing, visitorCount, selectedGrade, syncError, fetchCloudData, student, onLogout, subjects }) => {
+  onSaveSubjects?: (updated: Subject[]) => void;
+}> = ({ isAdmin, data, updateData, isSyncing, visitorCount, selectedGrade, syncError, fetchCloudData, student, onLogout, subjects, onSaveSubjects }) => {
   const [selectedId, setSelectedId] = useState<string | null>(() => {
+    const queryParams = new URLSearchParams(window.location.search);
+    let urlNode = queryParams.get('node');
+    if (!urlNode && window.location.hash.includes('?')) {
+      const hashQuery = window.location.hash.split('?')[1];
+      const hashParams = new URLSearchParams(hashQuery);
+      urlNode = hashParams.get('node');
+    }
+    if (urlNode) {
+      localStorage.setItem(`selected_id_${selectedGrade}`, urlNode);
+      return urlNode;
+    }
     return localStorage.getItem(`selected_id_${selectedGrade}`);
   });
+
+  const [copied, setCopied] = useState(false);
+  const handleShareLink = () => {
+    if (!selectedGrade || !selectedId) return;
+    const url = `${window.location.origin}${window.location.pathname}?subject=${selectedGrade}&node=${selectedId}`;
+    navigator.clipboard.writeText(url)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(err => {
+        console.error('Lỗi khi sao chép link:', err);
+        alert('Không thể tự động sao chép. Hãy sao chép liên kết này: ' + url);
+      });
+  };
+
+  useEffect(() => {
+    const queryParams = new URLSearchParams(window.location.search);
+    let urlNode = queryParams.get('node');
+    if (!urlNode && window.location.hash.includes('?')) {
+      const hashQuery = window.location.hash.split('?')[1];
+      const hashParams = new URLSearchParams(hashQuery);
+      urlNode = hashParams.get('node');
+    }
+    if (urlNode && urlNode !== selectedId) {
+      setSelectedId(urlNode);
+      localStorage.setItem(`selected_id_${selectedGrade}`, urlNode);
+      if ((data?.nodes || []).find(n => n.id === urlNode)?.url) {
+        setIframeLoading(true);
+      }
+    }
+  }, [selectedGrade, data?.nodes]);
   const [iframeLoading, setIframeLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'content' | 'tasks' | 'flashcards' | 'homework'>('content');
   const [showStudentManager, setShowStudentManager] = useState(false);
+  const [isVdcMode, setIsVdcMode] = useState(false);
   const [sloganIdx, setSloganIdx] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [isQuizOpen, setIsQuizOpen] = useState(false);
@@ -861,15 +1062,25 @@ const MainView: React.FC<{
   };
   
   const [showHomeConfig, setShowHomeConfig] = useState(false);
-  const [tempHomeUrl, setTempHomeUrl] = useState(data.homeUrl || '');
+  const [tempHomeUrl, setTempHomeUrl] = useState(data?.homeUrl || '');
   const [tempApiKey, setTempApiKey] = useState('');
+  const [tempSubjectPassword, setTempSubjectPassword] = useState('');
+  const [tempBgUrl, setTempBgUrl] = useState('');
+  const [tempGasUrl, setTempGasUrl] = useState('');
+
+  const currentSubjectObj = useMemo(() => {
+    return subjects.find(s => s.id === selectedGrade);
+  }, [subjects, selectedGrade]);
 
   useEffect(() => {
     if (showHomeConfig) {
-      setTempHomeUrl(data.homeUrl || '');
+      setTempHomeUrl(data?.homeUrl || '');
       setTempApiKey(localStorage.getItem(`gemini_api_key_grade_${selectedGrade}`) || '');
+      setTempSubjectPassword(currentSubjectObj?.password || '123');
+      setTempBgUrl(currentSubjectObj?.bgUrl || '');
+      setTempGasUrl(localStorage.getItem('gas_drive_script_url') || '');
     }
-  }, [showHomeConfig, selectedGrade, data.homeUrl]);
+  }, [showHomeConfig, selectedGrade, data?.homeUrl, currentSubjectObj]);
 
   useEffect(() => { setActiveTab('content'); }, [selectedId]);
 
@@ -992,14 +1203,28 @@ const MainView: React.FC<{
     } else {
       localStorage.removeItem(`gemini_api_key_grade_${selectedGrade}`);
     }
+
+    if (tempGasUrl.trim()) {
+      localStorage.setItem('gas_drive_script_url', tempGasUrl.trim());
+    } else {
+      localStorage.removeItem('gas_drive_script_url');
+    }
+    
+    // Save updated subject PIN and bgUrl back to Supabase config (id 999)
+    if (selectedGrade && selectedGrade !== 999) {
+      const updatedSubjects = subjects.map(s => s.id === selectedGrade ? { ...s, password: tempSubjectPassword, bgUrl: tempBgUrl.trim() } : s);
+      if (onSaveSubjects) onSaveSubjects(updatedSubjects);
+    }
+
     setShowHomeConfig(false);
   };
 
   const handleSelectNode = (id: string | null) => {
     setSelectedId(id);
+    setIsVdcMode(false);
     if (id) {
       localStorage.setItem(`selected_id_${selectedGrade}`, id);
-      if (data.nodes.find(n => n.id === id)?.url) setIframeLoading(true);
+      if ((data?.nodes || []).find(n => n.id === id)?.url) setIframeLoading(true);
     } else {
       localStorage.removeItem(`selected_id_${selectedGrade}`);
     }
@@ -1012,7 +1237,7 @@ const MainView: React.FC<{
       {/* If layout2 or layout3, render Top Horizontal Navbar */}
       {activeLayout !== 'layout1' && (
         <TopHorizontalNavbar
-          nodes={data.nodes}
+          nodes={data?.nodes || []}
           selectedId={selectedId}
           themeColor={themeColor}
           isAdmin={isAdmin}
@@ -1031,6 +1256,8 @@ const MainView: React.FC<{
             setShowNodeModal(true);
           }}
           onDeleteNode={handleDeleteNode}
+          onReorderNode={handleReorderNode}
+          onMoveNode={handleMoveNode}
           onLogout={() => {
             if (isAdmin) localStorage.removeItem('teacher_auth');
             if (onLogout) onLogout();
@@ -1038,6 +1265,8 @@ const MainView: React.FC<{
           }}
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
+          isVdcMode={isVdcMode}
+          onToggleVdc={() => setIsVdcMode(prev => !prev)}
         />
       )}
 
@@ -1083,15 +1312,35 @@ const MainView: React.FC<{
           </div>
         </div>
 
+        <div className="px-3 pb-1 shrink-0 bg-[#fbfcfd]">
+          <button
+            onClick={() => setIsVdcMode(prev => !prev)}
+            className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-between shadow-xs active:scale-98 ${
+              isVdcMode
+                ? 'bg-gradient-to-r from-amber-500 to-rose-600 text-white shadow-md shadow-rose-200'
+                : 'bg-gradient-to-r from-amber-50 to-rose-50 text-amber-900 border border-amber-200 hover:from-amber-100 hover:to-rose-100'
+            }`}
+            title="Mở kho câu hỏi Vận Dụng Cao & Lời giải chi tiết"
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles size={15} className={isVdcMode ? 'text-amber-200 fill-amber-200' : 'text-amber-600 fill-amber-500'} />
+              <span className="uppercase tracking-tight text-[11px]">KHO VDC 9+</span>
+            </div>
+            <span className={`px-1.5 py-0.5 rounded-md text-[8px] font-extrabold uppercase ${isVdcMode ? 'bg-white/20 text-white' : 'bg-amber-200 text-amber-900'}`}>
+              CÂU HỎI
+            </span>
+          </button>
+        </div>
+
         <div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-[#fbfcfd]">
           {filteredRootNodes.map(node=>(
-            <TreeItem key={node.id} node={node} allNodes={data.nodes} selectedId={selectedId} isAdmin={isAdmin} level={0}
+            <TreeItem key={node.id} node={node} allNodes={data?.nodes || []} selectedId={selectedId} isAdmin={isAdmin} level={0}
               visibleNodeIds={visibleNodeIds}
               searchTerm={searchTerm}
               themeColor={themeColor}
               onSelect={handleSelectNode}
               onAdd={(p,t)=>{
-                const nextOrder = data.nodes.filter(n => n.parentId === p).length;
+                const nextOrder = (data?.nodes || []).filter(n => n.parentId === p).length;
                 setNodeModalData({parentId:p, type:t, title:'', url:'', imageUrl: '', order: nextOrder}); 
                 setShowNodeModal(true);
               }}
@@ -1125,12 +1374,12 @@ const MainView: React.FC<{
       )}
 
       {/* PANEL 3: RESOURCES (Leftmost side in Layout 2) */}
-      {activeLayout === 'layout2' && (
+      {activeLayout === 'layout2' && !isVdcMode && (
         <ResourcesPanel 
           isAdmin={isAdmin} 
           selectedId={selectedId} 
           lessonResources={selectedNode?.lessonResources||[]} 
-          globalResources={data.globalResources}
+          globalResources={data?.globalResources || []}
           themeColor={themeColor}
           className="border-r border-slate-100 animate-in slide-in-from-left duration-300"
           onAdd={(isG)=> {setResModalData({title:'', url:'', isGlobal: isG}); setShowResModal(true);}}
@@ -1160,7 +1409,26 @@ const MainView: React.FC<{
             </button>
           </div>
         )}
-        {selectedId ? (
+        {isVdcMode ? (
+          <VdcQuestionsPanel
+            isAdmin={isAdmin}
+            selectedGrade={selectedGrade}
+            nodes={data?.nodes || []}
+            themeColor={themeColor}
+            onBackToLessons={() => setIsVdcMode(false)}
+            showToast={(msg) => {
+              alert(msg);
+            }}
+            showConfirm={(title, msg, onConfirm) => {
+              setConfirmConfig({
+                isOpen: true,
+                title,
+                message: msg,
+                onConfirm
+              });
+            }}
+          />
+        ) : selectedId ? (
           <>
             {selectedNode?.type === 'folder' ? (
               <FolderSummary 
@@ -1197,6 +1465,23 @@ const MainView: React.FC<{
                           </button>
                         )}
                       </div>
+                      <button 
+                        onClick={handleShareLink} 
+                        className={`p-2 rounded-full transition-all flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-50 text-slate-500 hover:text-${themeColor}-600 hover:bg-${themeColor}-50 border border-slate-100 hover:border-${themeColor}-200/50`}
+                        title="Sao chép đường dẫn trực tiếp đến bài học này"
+                      >
+                        {copied ? (
+                          <>
+                            <span className="text-[9px] font-black uppercase text-emerald-600 animate-in fade-in duration-200">Đã sao chép!</span>
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-[9px] font-black uppercase tracking-wider">Chia sẻ link</span>
+                            <Share2 size={14} />
+                          </>
+                        )}
+                      </button>
                       {selectedNode?.url && <button onClick={()=>window.open(selectedNode.url, '_blank')} className={`p-2 bg-slate-50 text-slate-400 hover:text-${themeColor}-600 rounded-full hover:bg-${themeColor}-50 transition-colors`}><Maximize2 size={16}/></button>}
                     </div>
                   </div>
@@ -1248,29 +1533,108 @@ const MainView: React.FC<{
             )}
           </>
         ) : (
-          <div className="flex-1 flex flex-col overflow-hidden bg-white">
+          <div className="flex-1 flex flex-col overflow-hidden relative min-h-full">
              {data.homeUrl ? (
                <iframe src={data.homeUrl} className="w-full h-full border-none" title="Trang chủ" />
              ) : (
-               <div className="flex-1 flex flex-col items-center justify-center text-center p-12">
-                 <div className="w-24 h-24 bg-slate-50 rounded-[40px] flex items-center justify-center mb-6 border border-slate-100">
-                    <Book size={48} className={`text-${themeColor}-600 opacity-10`}/>
+               <div className="flex-1 flex flex-col items-center justify-center text-center p-4 md:p-8 relative overflow-y-auto custom-scrollbar h-full w-full">
+                  {/* Subject background image */}
+                  <div 
+                    className="absolute inset-0 bg-cover bg-center opacity-[0.25] pointer-events-none scale-105 filter blur-[1px] transition-all duration-1000"
+                    style={{ backgroundImage: `url(${currentSubject?.bgUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=2000&q=80'})` }}
+                  />
+                  {/* Subtle clean linear gradient overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-b from-slate-50/80 via-white/90 to-slate-100/95 pointer-events-none" />
+                  
+                  <div className="relative z-10 w-full max-w-xl bg-white/90 backdrop-blur-xl border border-white/60 shadow-xl rounded-[32px] p-6 md:p-8 flex flex-col items-center space-y-5 my-auto animate-in fade-in zoom-in-95 duration-500">
+                 <div className={`w-14 h-14 bg-${themeColor}-100 rounded-[20px] flex items-center justify-center border border-white shadow-md hover:scale-110 transition-transform duration-300 shrink-0 mb-1`}>
+                    <Book size={28} className={`text-${themeColor}-600 animate-pulse`}/>
                  </div>
-                 <h2 className="text-2xl font-black uppercase tracking-tighter text-slate-900 opacity-5">{gradeTitle}</h2>
-                 <p className="text-[10px] font-bold text-slate-200 uppercase tracking-[0.4em] mt-4">Chọn bài học để bắt đầu</p>
-               </div>
-             )}
+                                     <div className="space-y-1">
+                      <span className={`text-[8.5px] font-black tracking-widest text-${themeColor}-600 uppercase bg-${themeColor}-50/80 border border-${themeColor}-100 px-3.5 py-1.5 rounded-full inline-block mb-1`}>
+                        Không gian học tập cá nhân hóa
+                      </span>
+                      <h2 className="text-xl md:text-2xl font-black uppercase tracking-tight text-slate-800 pt-1 leading-none">{gradeTitle}</h2>
+                      <p className="text-[9px] font-bold text-slate-400 italic max-w-md mx-auto line-clamp-1 mt-2 leading-relaxed">
+                        "{SLOGANS[sloganIdx]}"
+                      </p>
+                    </div>
+                                     {student ? (
+                      <div className="bg-slate-50/80 border border-slate-100/80 rounded-xl p-3.5 w-full flex items-center gap-3 transition-all hover:scale-[1.01] shrink-0">
+                        <div className={`w-9 h-9 bg-${themeColor}-600 rounded-lg flex items-center justify-center text-white text-xs font-black shadow-md shadow-${themeColor}-100`}>
+                          {student.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="text-left min-w-0 flex-1">
+                          <p className="text-[7.5px] font-black text-slate-400 uppercase tracking-widest">Học viên đang học</p>
+                          <h4 className="text-sm font-black text-slate-800 truncate uppercase mt-0.5 leading-none">{student.full_name || student.name}</h4>
+                        </div>
+                        <div className="text-right shrink-0 bg-white px-2.5 py-1 rounded-lg border border-slate-100/60 shadow-sm">
+                          <span className="text-[7.5px] font-bold text-slate-400 block uppercase tracking-widest leading-none">Chương trình</span>
+                          <span className={`text-[10px] font-black text-${themeColor}-600 uppercase tracking-wider block mt-1 leading-none`}>Khối {selectedGrade}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-amber-50/80 border border-amber-100/50 rounded-xl p-3 w-full flex items-center justify-between gap-3 shrink-0">
+                        <div className="text-left">
+                          <p className="text-[10.5px] font-black text-slate-700 uppercase tracking-tight leading-none leading-none">Khu vực kiểm soát Học liệu</p>
+                          <p className="text-[9px] text-slate-400 font-medium mt-1 leading-none">Bạn có quyền thay đổi cấu trúc &amp; học liệu môn này</p>
+                        </div>
+                        <span className="text-[8px] font-black bg-amber-500 text-white rounded-md px-2 py-0.5 uppercase tracking-widest shrink-0 leading-none">Giáo Viên</span>
+                       </div>
+                    )}
+
+                    {/* Quick jump to chapters */}
+                    <div className="w-full space-y-2 text-left">
+                      <div className="flex justify-between items-center px-1">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">Mục lục giáo trình</span>
+                        <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest leading-none">({filteredRootNodes.length} thư mục gốc)</span>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[140px] overflow-y-auto custom-scrollbar pr-1">
+                        {filteredRootNodes.length === 0 ? (
+                          <div className="col-span-2 text-center py-6 text-slate-300 text-[10px] italic font-semibold uppercase tracking-wider">
+                            Chương trình chưa được khởi tạo học liệu 
+                          </div>
+                        ) : (
+                          filteredRootNodes.map(node => (
+                            <button 
+                              key={node.id}
+                              onClick={() => handleSelectNode(node.id)}
+                              className="flex items-center gap-2.5 p-2.5 bg-slate-50/85 hover:bg-white hover:scale-[1.01] border border-slate-100 rounded-xl text-left transition-all group shadow-sm shrink-0"
+                            >
+                              <div className={`p-1.5 bg-white text-slate-400 group-hover:bg-${themeColor}-50 group-hover:text-${themeColor}-600 rounded-lg transition-colors shadow-sm`}>
+                                <Folder size={12} />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-[10px] font-black text-slate-700 truncate uppercase tracking-tight group-hover:text-slate-900 transition-colors leading-none">{node.title}</p>
+                                <p className="text-[7.5px] text-slate-400 font-bold uppercase tracking-widest leading-none mt-1">
+                                  {(data?.nodes || []).filter(n => n.parentId === node.id).length} Học liệu / Bài giảng
+                                </p>
+                              </div>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="text-[8px] font-bold text-slate-400 uppercase tracking-widest pt-3 border-t border-slate-100 w-full flex justify-between items-center px-1 shrink-0">
+                      <span>{formattedTime}</span>
+                      <span>Lượt học: {visitorCount}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
           </div>
         )}
       </main>
 
       {/* PANEL 3: RESOURCES (Right side in Layout 1 & 3) */}
-      {(activeLayout === 'layout1' || activeLayout === 'layout3') && (
+      {(activeLayout === 'layout1' || activeLayout === 'layout3') && !isVdcMode && (
         <ResourcesPanel 
           isAdmin={isAdmin} 
           selectedId={selectedId} 
           lessonResources={selectedNode?.lessonResources||[]} 
-          globalResources={data.globalResources}
+          globalResources={data?.globalResources || []}
           themeColor={themeColor}
           className="border-l border-slate-100 animate-in slide-in-from-right duration-300"
           onAdd={(isG)=> {setResModalData({title:'', url:'', isGlobal: isG}); setShowResModal(true);}}
@@ -1305,6 +1669,30 @@ const MainView: React.FC<{
                   <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest">Link trang chủ (URL)</label>
                   <input value={tempHomeUrl} onChange={e=>setTempHomeUrl(e.target.value)} className="w-full px-4 py-3 text-sm font-medium outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-amber-400 transition-all" placeholder="https://..."/>
                 </div>
+                
+                <div className="space-y-1 pt-1">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest block mb-1">Hình nền (Background preset)</label>
+                  <select 
+                    value={BACKGROUND_PRESETS_LIST.find(opt => opt.value === tempBgUrl) ? tempBgUrl : 'custom'}
+                    onChange={e => {
+                      if (e.target.value !== 'custom') {
+                        setTempBgUrl(e.target.value);
+                      }
+                    }}
+                    className="w-full px-4 py-3 text-sm font-semibold outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-amber-400 transition-all mb-1 block"
+                  >
+                    {BACKGROUND_PRESETS_LIST.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                    <option value="custom">-- Nhập liên kết ảnh tùy chỉnh --</option>
+                  </select>
+                  <input 
+                    value={tempBgUrl} 
+                    onChange={e=>setTempBgUrl(e.target.value)} 
+                    className="w-full px-4 py-3 text-sm font-mono outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-amber-400 transition-all" 
+                    placeholder="Dán liên kết ảnh bất kỳ (https://...)"
+                  />
+                </div>
 
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pt-2 border-t border-slate-100 mt-2">Cấu hình Quiz AI</h4>
                 <div className="space-y-1">
@@ -1317,6 +1705,19 @@ const MainView: React.FC<{
                     placeholder="Nhập API Key riêng cho môn này..."
                   />
                   <p className="text-[8px] text-slate-400 px-1 leading-normal">Cấu hình API Key riêng của giáo viên phụ trách môn học này để soạn bài độc lập.</p>
+                </div>
+
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pt-2 border-t border-slate-100 mt-2">Cấu hình Google Drive Upload</h4>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest">Web App URL Apps Script</label>
+                  <input 
+                    type="text" 
+                    value={tempGasUrl} 
+                    onChange={e=>setTempGasUrl(e.target.value)} 
+                    className="w-full px-4 py-3 text-[11px] font-mono outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-amber-400 transition-all" 
+                    placeholder="https://script.google.com/macros/s/.../exec"
+                  />
+                  <p className="text-[8px] text-slate-400 px-1 leading-normal">URL Ứng dụng web Google Apps Script để tự động tải file trực tiếp lên Google Drive cá nhân.</p>
                 </div>
               </div>
 
@@ -1340,6 +1741,19 @@ const MainView: React.FC<{
                     <input type="file" className="hidden" accept=".json" onChange={importData} disabled={isImporting} />
                   </label>
                   <p className="text-[8px] text-red-400 font-bold px-1 uppercase tracking-tight">* Khôi phục sẽ ghi đè dữ liệu dự án mới.</p>
+                </div>
+
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pt-2 border-t border-slate-100 mt-2">Mã PIN Giáo viên & Học sinh</h4>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest">Mã PIN Môn học</label>
+                  <input 
+                    type="text" 
+                    value={tempSubjectPassword} 
+                    onChange={e=>setTempSubjectPassword(e.target.value)} 
+                    className="w-full px-4 py-3 text-sm font-medium outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-amber-400 transition-all font-mono" 
+                    placeholder="Mật khẩu môn học..."
+                  />
+                  <p className="text-[8px] text-slate-400 px-1 leading-normal">Thay đổi mã PIN dùng để truy cập Dashboard Giáo viên của riêng bộ môn/khối lớp này.</p>
                 </div>
               </div>
             </div>
@@ -1393,9 +1807,21 @@ const MainView: React.FC<{
             {nodeModalData.type === 'lesson' && (
               <>
                 <div className="space-y-1">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest flex justify-between items-center">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest flex justify-between items-center mb-1">
                     <span>Link tài liệu (Nhúng / Iframe)</span>
                   </label>
+                  <DriveUploader
+                    themeColor={themeColor}
+                    buttonText="Tải file PDF / Ảnh / Slide lên Google Drive"
+                    onUploadSuccess={(url, fileName) => {
+                      const cleanTitle = fileName.replace(/\.[^/.]+$/, "");
+                      setNodeModalData((prev: any) => ({
+                        ...prev,
+                        url: url,
+                        title: prev.title ? prev.title : cleanTitle
+                      }));
+                    }}
+                  />
                   <input value={nodeModalData.url} onChange={e=>setNodeModalData({...nodeModalData, url:e.target.value})} className={`w-full px-4 py-3 text-[11px] outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-${themeColor}-400 transition-all`} placeholder="https://drive.google.com/... hoặc link tài liệu khác"/>
                 </div>
                 <div className="space-y-1">
@@ -1424,9 +1850,21 @@ const MainView: React.FC<{
               <input autoFocus value={resModalData.title} onChange={e=>setResModalData({...resModalData, title:e.target.value})} className={`w-full px-4 py-3 text-sm font-medium outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-${themeColor}-400 transition-all`} placeholder="Ví dụ: Video thí nghiệm..."/>
             </div>
             <div className="space-y-1">
-              <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest flex justify-between items-center">
+              <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest flex justify-between items-center mb-1">
                 <span>Đường dẫn (URL)</span>
               </label>
+              <DriveUploader
+                themeColor={themeColor}
+                buttonText="Tải file lên Google Drive"
+                onUploadSuccess={(url, fileName) => {
+                  const cleanTitle = fileName.replace(/\.[^/.]+$/, "");
+                  setResModalData((prev: any) => ({
+                    ...prev,
+                    url: url,
+                    title: prev.title ? prev.title : cleanTitle
+                  }));
+                }}
+              />
               <input value={resModalData.url} onChange={e=>setResModalData({...resModalData, url:e.target.value})} className={`w-full px-4 py-3 text-[11px] outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-${themeColor}-400 transition-all`} placeholder="Dán link tài liệu từ Google Drive, Youtube..."/>
             </div>
             <div className="flex gap-4 pt-2">
