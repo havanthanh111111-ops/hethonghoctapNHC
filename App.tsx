@@ -1,10 +1,9 @@
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
-import { Book, Plus, Maximize2, Loader2, BrainCircuit, GraduationCap, ShieldCheck, Search, LogOut, Folder, Globe, Zap, Image as ImageIcon, Settings, ArrowLeft, ArrowRight, Upload, AlertCircle, Users, Cloud, ExternalLink, BookOpen, Sparkles, ChevronRight, Key, ListOrdered, ArrowUpDown, Menu, Paperclip, X } from 'lucide-react';
-import { uploadFileToGoogleDrive, signInWithGoogleForDrive, getDriveAccessToken, isGoogleDriveUrl, extractDriveFileId } from './googleDrive';
+import { Book, Plus, Maximize2, Loader2, BrainCircuit, GraduationCap, ShieldCheck, Search, LogOut, Folder, Globe, Zap, Image as ImageIcon, Settings, ArrowLeft, ArrowRight, Upload, AlertCircle, Users } from 'lucide-react';
 import { supabase } from './supabaseClient';
-import { AppData, ResourceLink, BookNode, NodeType, Student } from './types';
+import { AppData, ResourceLink, BookNode, NodeType, Student, Subject } from './types';
 import { INITIAL_DATA } from './constants';
 import TreeItem from './components/TreeItem';
 import QuizModal from './components/QuizModal';
@@ -16,12 +15,10 @@ import TaskPanel from './components/TaskPanel';
 import StudentLogin from './components/StudentLogin';
 import StudentManager from './components/StudentManager';
 import HomeworkPanel from './components/HomeworkPanel';
-import { StudentSpaceModal } from './components/StudentSpaceModal';
-import VdcQuestionsPanel from './components/VdcQuestionsPanel';
-import ChapterReorderModal from './components/ChapterReorderModal';
-import { MediaViewer, MediaViewerModal } from './components/MediaViewer';
-import { uploadToImgBB } from './imgbb';
-import { ConfirmModal, ToastNotification, ConfirmState, ToastState } from './components/CustomDialog';
+import { SuperAdminView } from './components/SuperAdminView';
+import { TopHorizontalNavbar } from './components/TopHorizontalNavbar';
+import ConfirmModal from './components/ConfirmModal';
+
 import { getSafeEnv, SLOGANS } from './utils';
 
 class ErrorBoundary extends React.Component<any, any> {
@@ -68,27 +65,24 @@ class ErrorBoundary extends React.Component<any, any> {
 }
 
 const TEACHER_PWD = getSafeEnv('TEACHER_PASSWORD') || '123';
+const SUPER_ADMIN_PWD = getSafeEnv('SUPER_ADMIN_PASSWORD') || 'super123';
 
-const normalizeAppData = (raw: any): AppData => {
-  if (!raw || typeof raw !== 'object') return INITIAL_DATA;
-  return {
-    nodes: Array.isArray(raw.nodes) ? raw.nodes : INITIAL_DATA.nodes,
-    globalResources: Array.isArray(raw.globalResources) ? raw.globalResources : INITIAL_DATA.globalResources,
-    homeUrl: typeof raw.homeUrl === 'string' ? raw.homeUrl : INITIAL_DATA.homeUrl
-  };
-};
+const DEFAULT_SUBJECTS: Subject[] = [
+  { id: 10, label: 'Vật Lý 10', color: 'bg-emerald-600', shadow: 'shadow-emerald-100', theme: 'emerald', password: '123' },
+  { id: 11, label: 'Vật Lý 11', color: 'bg-indigo-600', shadow: 'shadow-indigo-100', theme: 'indigo', password: '123' },
+  { id: 12, label: 'Vật Lý 12', color: 'bg-rose-600', shadow: 'shadow-rose-100', theme: 'rose', password: '123' },
+];
 
 const App: React.FC = () => {
+  const [subjects, setSubjects] = useState<Subject[]>(() => {
+    const saved = localStorage.getItem('subjects_config');
+    return saved ? JSON.parse(saved) : DEFAULT_SUBJECTS;
+  });
+
   const [selectedGrade, setSelectedGrade] = useState<number | null>(() => {
-    try {
-      const saved = localStorage.getItem('selected_grade');
-      if (!saved || saved === 'null' || saved === 'undefined') return null;
-      if (saved === '1') return 11; // Migrate Khối 11 from ID 1 to ID 11
-      const parsed = parseInt(saved, 10);
-      return isNaN(parsed) ? null : parsed;
-    } catch (e) {
-      return null;
-    }
+    const saved = localStorage.getItem('selected_grade');
+    if (saved === '1') return 11; // Migrate Khối 11 from ID 1 to ID 11
+    return saved ? parseInt(saved) : null;
   });
   const [data, setData] = useState<AppData>(INITIAL_DATA);
   const [visitorCount, setVisitorCount] = useState<number>(0);
@@ -97,14 +91,48 @@ const App: React.FC = () => {
   const [student, setStudent] = useState<Student | null>(null);
 
   useEffect(() => {
+    const fetchSubjectsConfig = async () => {
+      try {
+        const { data: config, error } = await supabase
+          .from('app_settings')
+          .select('data')
+          .eq('id', 999)
+          .maybeSingle();
+        if (!error && config?.data?.subjects) {
+          setSubjects(config.data.subjects);
+          localStorage.setItem('subjects_config', JSON.stringify(config.data.subjects));
+        } else if (!config?.data?.subjects) {
+          // If not configured, initialize default subjects in DB
+          await supabase
+            .from('app_settings')
+            .upsert({ id: 999, data: { subjects: DEFAULT_SUBJECTS } });
+        }
+      } catch (err) {
+        console.error('Error fetching subjects config:', err);
+      }
+    };
+    fetchSubjectsConfig();
+  }, []);
+
+  const handleSaveSubjects = async (updated: Subject[]) => {
+    setSubjects(updated);
+    localStorage.setItem('subjects_config', JSON.stringify(updated));
+    try {
+      await supabase.from('app_settings').upsert({ id: 999, data: { subjects: updated } });
+    } catch (err) {
+      console.error("Error saving subjects config in DB:", err);
+    }
+  };
+
+
+  useEffect(() => {
     // Tự động đăng nhập student nếu đã có ID lưu trong máy
     const savedId = localStorage.getItem('student_auth_id');
     if (savedId && selectedGrade) {
-       Promise.resolve(supabase.from('students').select('*').eq('id', savedId).eq('grade_id', selectedGrade).maybeSingle())
+       supabase.from('students').select('*').eq('id', savedId).eq('grade_id', selectedGrade).maybeSingle()
          .then(({ data: sData }) => {
             if (sData) setStudent(sData);
-         })
-         .catch((err) => console.warn("Auto-login student failed:", err));
+         });
     }
   }, [selectedGrade]);
 
@@ -135,7 +163,7 @@ const App: React.FC = () => {
         if (gradeId === 11 && cloudError.code === 'PGRST116') {
              const { data: fallback, error: fbError } = await supabase.from('app_settings').select('data').eq('id', 1).single();
              if (!fbError && fallback?.data) {
-                setData(normalizeAppData(fallback.data));
+                setData(fallback.data);
                 setIsSyncing(false);
                 return;
              }
@@ -167,7 +195,7 @@ const App: React.FC = () => {
           // Giữ nguyên data hiện tại hoặc để trống thay vì nạp template làm người dùng hoang mang
         }
       } else if (cloud?.data) {
-        setData(normalizeAppData(cloud.data));
+        setData(cloud.data);
         setIsSyncing(false); // Thành công, tắt loading
       } else {
         setData(INITIAL_DATA);
@@ -226,11 +254,6 @@ const App: React.FC = () => {
     setSyncError(null);
     try { 
       const { error } = await supabase.from('app_settings').upsert({ id: selectedGrade, data: newData }); 
-      // Đồng bộ cả ID 1 và ID 11 cho khối 11 để đảm bảo các thiết bị/trình duyệt cũ luôn nhận cùng dữ liệu
-      if (selectedGrade === 11 || selectedGrade === 1) {
-        await supabase.from('app_settings').upsert({ id: 1, data: newData });
-        await supabase.from('app_settings').upsert({ id: 11, data: newData });
-      }
       if (error) {
         console.error("Update error:", error);
         setSyncError("Lỗi khi lưu dữ liệu lên đám mây: " + error.message);
@@ -245,9 +268,10 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary>
       <Routes>
-        <Route path="/" element={<LandingPage visitorCount={visitorCount} onSelectGrade={handleSelectGrade} selectedGrade={selectedGrade} />} />
-        <Route path="/teacher" element={<ProtectedRoute><MainView isAdmin={true} data={data} updateData={updateData} isSyncing={isSyncing} visitorCount={visitorCount} selectedGrade={selectedGrade} syncError={syncError} fetchCloudData={fetchCloudData} student={null} /></ProtectedRoute>} />
-        <Route path="/student" element={student ? <MainView isAdmin={false} data={data} updateData={updateData} isSyncing={isSyncing} visitorCount={visitorCount} selectedGrade={selectedGrade} syncError={syncError} fetchCloudData={fetchCloudData} student={student} onLogout={() => { setStudent(null); localStorage.removeItem('student_auth_id'); }} /> : <StudentLogin onLogin={setStudent} gradeId={selectedGrade || 11} themeColor={selectedGrade === 10 ? 'emerald' : selectedGrade === 12 ? 'rose' : 'indigo'} />} />
+        <Route path="/" element={<LandingPage visitorCount={visitorCount} onSelectGrade={handleSelectGrade} selectedGrade={selectedGrade} subjects={subjects} />} />
+        <Route path="/super" element={<SuperProtectedRoute><SuperAdminView subjects={subjects} onSaveSubjects={handleSaveSubjects} visitorCount={visitorCount} /></SuperProtectedRoute>} />
+        <Route path="/teacher" element={<ProtectedRoute><MainView isAdmin={true} data={data} updateData={updateData} isSyncing={isSyncing} visitorCount={visitorCount} selectedGrade={selectedGrade} syncError={syncError} fetchCloudData={fetchCloudData} student={null} subjects={subjects} /></ProtectedRoute>} />
+        <Route path="/student" element={student ? <MainView isAdmin={false} data={data} updateData={updateData} isSyncing={isSyncing} visitorCount={visitorCount} selectedGrade={selectedGrade} syncError={syncError} fetchCloudData={fetchCloudData} student={student} onLogout={() => { setStudent(null); localStorage.removeItem('student_auth_id'); }} subjects={subjects} /> : <StudentLogin onLogin={setStudent} gradeId={selectedGrade || 11} themeColor={subjects.find(s => s.id === selectedGrade)?.theme || 'indigo'} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ErrorBoundary>
@@ -259,58 +283,220 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   return <>{children}</>;
 };
 
-const LandingPage: React.FC<{ visitorCount: number, onSelectGrade: (g: number) => void, selectedGrade: number | null }> = ({ visitorCount, onSelectGrade, selectedGrade }) => {
+const SuperProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  if (localStorage.getItem('super_auth') !== 'true') return <Navigate to="/" replace />;
+  return <>{children}</>;
+};
+
+
+const LandingPage: React.FC<{ visitorCount: number, onSelectGrade: (g: number) => void, selectedGrade: number | null, subjects: Subject[] }> = ({ visitorCount, onSelectGrade, selectedGrade, subjects }) => {
   const [showPass, setShowPass] = useState(false);
   const [pin, setPin] = useState('');
   const [error, setError] = useState(false);
   const navigate = useNavigate();
 
-  const grades = [
-    { id: 10, label: 'Khối 10', color: 'bg-emerald-600', shadow: 'shadow-emerald-100', theme: 'emerald' },
-    { id: 11, label: 'Khối 11', color: 'bg-indigo-600', shadow: 'shadow-indigo-100', theme: 'indigo' },
-    { id: 12, label: 'Khối 12', color: 'bg-rose-600', shadow: 'shadow-rose-100', theme: 'rose' },
-  ];
+  // State for active general subject group (e.g. "Vật Lý")
+  const [activeSubjectGroup, setActiveSubjectGroup] = useState<string | null>(null);
+
+  // Group subjects by group name dynamically (case-insensitive and unicode-normalized)
+  const groupedSubjects = useMemo(() => {
+    const groups: { [key: string]: Subject[] } = {};
+    const displayNames: { [key: string]: string } = {}; // lowercase key -> display name
+
+    subjects.forEach(sub => {
+      const normalized = sub.label.normalize("NFC").replace(/\s+/g, ' ').trim();
+      const regex = /^(.*?)\s+(?:Lớp|Khối|K)?\s*(10|11|12|9|8|7|6)$/i;
+      const match = normalized.match(regex);
+      const groupName = match ? match[1].trim() : normalized;
+      const lowerKey = groupName.toLowerCase();
+
+      // Store a high quality display name for this group (prefer capitalized if available)
+      if (!displayNames[lowerKey]) {
+        displayNames[lowerKey] = groupName;
+      } else {
+        // If the new one starts with uppercase, prefer it as the default display title
+        const current = displayNames[lowerKey];
+        if (groupName !== current && groupName[0] === groupName[0].toUpperCase()) {
+          displayNames[lowerKey] = groupName;
+        }
+      }
+
+      if (!groups[lowerKey]) {
+        groups[lowerKey] = [];
+      }
+      groups[lowerKey].push(sub);
+    });
+
+    // Re-pack into a final object using tidy display names
+    const result: { [key: string]: Subject[] } = {};
+    Object.keys(groups).forEach(lowerKey => {
+      const displayTitle = displayNames[lowerKey];
+      const capitalized = displayTitle.charAt(0).toUpperCase() + displayTitle.slice(1);
+      result[capitalized] = groups[lowerKey];
+    });
+
+    return result;
+  }, [subjects]);
+
+  const groupKeys = useMemo(() => Object.keys(groupedSubjects), [groupedSubjects]);
+
+  const currentSubject = subjects.find(s => s.id === selectedGrade);
+  const themeColor = currentSubject?.theme || 'indigo';
+
+  const handleLoginSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const subjectPwd = currentSubject?.password || TEACHER_PWD;
+
+    if (pin === SUPER_ADMIN_PWD) {
+      localStorage.setItem('super_auth', 'true');
+      navigate('/super');
+    } else if (pin === subjectPwd || pin === TEACHER_PWD) {
+      localStorage.setItem('teacher_auth', 'true');
+      navigate('/teacher');
+    } else {
+      setError(true);
+    }
+  };
+
+  const getSubLabel = (sub: Subject, groupName: string) => {
+    const normalized = sub.label.trim();
+    const regex = /^(.*?)\s+(?:Lớp|Khối|K)?\s*(10|11|12|9|8|7|6)$/i;
+    const match = normalized.match(regex);
+    if (match) {
+      return `Lớp ${match[2]}`;
+    }
+    return sub.label;
+  };
+
+  const getGroupTheme = (groupSubjects: Subject[]) => {
+    return groupSubjects[0]?.theme || 'indigo';
+  };
+
+  const getGroupColor = (groupSubjects: Subject[]) => {
+    return groupSubjects[0]?.color || 'bg-indigo-600';
+  };
+
+  const getGroupShadow = (groupSubjects: Subject[]) => {
+    return groupSubjects[0]?.shadow || 'shadow-indigo-100';
+  };
 
   return (
     <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50 overflow-hidden relative text-center px-4">
       {selectedGrade && (
         <button 
-          onClick={() => onSelectGrade(null as any)}
-          className="absolute top-6 left-6 md:top-10 md:left-10 flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-red-500 hover:border-red-100 transition-all shadow-sm z-50 group"
+          onClick={() => {
+            onSelectGrade(null as any);
+            setShowPass(false);
+          }}
+          className="absolute top-6 left-6 md:top-10 md:left-10 flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-red-500 hover:border-red-100 transition-all shadow-sm z-50 group hover:scale-[1.02] active:scale-95"
         >
           <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform"/> 
           Thoát ra ngoài
         </button>
       )}
+
+      {activeSubjectGroup && !selectedGrade && (
+        <button 
+          onClick={() => setActiveSubjectGroup(null)}
+          className="absolute top-6 left-6 md:top-10 md:left-10 flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-600 hover:border-indigo-100 transition-all shadow-sm z-50 group hover:scale-[1.02] active:scale-95"
+        >
+          <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform"/> 
+          Quay lại chọn môn
+        </button>
+      )}
+
+      {!selectedGrade && (
+        <button 
+          onClick={() => {
+            onSelectGrade(999);
+            setPin('');
+            setError(false);
+          }}
+          className="absolute top-6 right-6 md:top-10 md:right-10 flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-500 transition-all shadow-sm z-50 group hover:scale-[1.02] active:scale-95"
+        >
+          <ShieldCheck size={14} className="text-amber-500 group-hover:scale-110 transition-transform" />
+          Super Admin
+        </button>
+      )}
+
       <div className="relative z-10 flex flex-col items-center w-full max-w-4xl">
         <div className="mb-8 p-5 bg-white border border-slate-200 shadow-sm rounded-3xl">
-            <Book size={48} className={selectedGrade ? (selectedGrade === 10 ? 'text-emerald-600' : selectedGrade === 12 ? 'text-rose-600' : 'text-indigo-600') : 'text-slate-400'}/>
+            <Book size={48} className={selectedGrade ? (selectedGrade === 999 ? 'text-amber-500 animate-bounce' : `text-${themeColor}-600`) : (activeSubjectGroup ? `text-${getGroupTheme(groupedSubjects[activeSubjectGroup])}-600` : 'text-slate-400')}/>
         </div>
-        <h1 className="text-4xl md:text-6xl font-black text-slate-900 uppercase mb-12 tracking-tighter">
-          {selectedGrade ? `VẬT LÝ ${selectedGrade}` : 'HỆ THỐNG HỌC TẬP'}
+        <h1 className="text-2xl md:text-5xl font-black text-slate-900 uppercase mb-12 tracking-tighter">
+          {selectedGrade === 999 
+            ? 'QUẢN TRỊ VIÊN TỐI CAO' 
+            : selectedGrade 
+              ? currentSubject?.label 
+              : activeSubjectGroup 
+                ? `Môn ${activeSubjectGroup}` 
+                : 'HỆ THỐNG HỌC TẬP'}
         </h1>
         
         {!selectedGrade ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
-            {grades.map((g) => (
-              <button 
-                key={g.id}
-                onClick={() => onSelectGrade(g.id)}
-                className="bg-white p-10 rounded-[40px] shadow-xl shadow-slate-200/50 border border-white flex flex-col items-center space-y-4 hover:scale-[1.05] transition-all group"
-              >
-                <div className={`w-16 h-16 ${g.color} rounded-2xl flex items-center justify-center shadow-lg ${g.shadow}`}>
-                  <GraduationCap size={32} className="text-white"/>
-                </div>
-                <h2 className="text-xl font-black text-slate-800 tracking-tight">{g.label}</h2>
-                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Chọn để bắt đầu</p>
-              </button>
-            ))}
+          !activeSubjectGroup ? (
+            /* PHASE 1: List of general subjects (Group Name) */
+            <div className="flex flex-wrap justify-center gap-6 w-full max-h-[60vh] overflow-y-auto p-4 custom-scrollbar">
+              {groupKeys.map((key) => {
+                const groupItems = groupedSubjects[key];
+                const repColor = getGroupColor(groupItems);
+                const repShadow = getGroupShadow(groupItems);
+
+                return (
+                  <button 
+                    key={key}
+                    onClick={() => setActiveSubjectGroup(key)}
+                    className="bg-white p-8 rounded-[36px] shadow-lg shadow-slate-200/50 border border-white flex flex-col items-center space-y-4 hover:scale-[1.03] hover:shadow-xl transition-all group w-[220px]"
+                  >
+                    <div className={`w-14 h-14 ${repColor} rounded-2xl flex items-center justify-center shadow-lg ${repShadow}`}>
+                      <GraduationCap size={28} className="text-white"/>
+                    </div>
+                    <h2 className="text-md font-black text-slate-800 tracking-tight truncate w-full px-2 uppercase">{key}</h2>
+                    <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest">{groupItems.length} Phân lớp / Khối</p>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            /* PHASE 2: List of specific grades under the selected subject group */
+            <div className="flex flex-wrap justify-center gap-6 w-full max-h-[60vh] overflow-y-auto p-4 custom-scrollbar animate-in slide-in-from-right-4 duration-300">
+              {groupedSubjects[activeSubjectGroup].map((sub) => {
+                const subLabel = getSubLabel(sub, activeSubjectGroup);
+                return (
+                  <button 
+                    key={sub.id}
+                    onClick={() => onSelectGrade(sub.id)}
+                    className="bg-white p-8 rounded-[36px] shadow-lg shadow-slate-200/50 border border-white flex flex-col items-center space-y-4 hover:scale-[1.03] hover:shadow-xl transition-all group w-[220px]"
+                  >
+                    <div className={`w-14 h-14 ${sub.color || 'bg-indigo-600'} rounded-2xl flex items-center justify-center shadow-lg ${sub.shadow || 'shadow-indigo-100'}`}>
+                      <GraduationCap size={28} className="text-white"/>
+                    </div>
+                    <h2 className="text-md font-black text-slate-800 tracking-tight truncate w-full px-2">{subLabel}</h2>
+                    <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest">Bắt đầu học tập</p>
+                  </button>
+                );
+              })}
+            </div>
+          )
+        ) : selectedGrade === 999 ? (
+          <div className="max-w-md w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <form onSubmit={handleLoginSubmit} 
+              className="bg-white p-10 rounded-[40px] shadow-2xl border border-amber-100 flex flex-col items-center space-y-6">
+              <input type="password" autoFocus value={pin} onChange={(e)=>{setPin(e.target.value); setError(false);}} className={`w-full px-4 py-5 bg-slate-50 border-2 rounded-2xl text-center font-black text-2xl tracking-[0.5em] ${error?'border-red-400 animate-shake':'border-transparent focus:border-amber-400 outline-none'}`} placeholder="****" autoComplete="current-password"/>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">
+                Nhập mã PIN tối cao để quản trị toàn cục
+              </div>
+              <div className="flex gap-4 w-full">
+                <button type="button" onClick={() => onSelectGrade(null as any)} className="flex-1 font-bold text-slate-300 uppercase text-[10px] tracking-widest">Hủy bỏ</button>
+                <button type="submit" className="flex-1 px-4 py-4 bg-amber-500 text-white rounded-2xl font-bold uppercase text-[10px] shadow-lg shadow-amber-200 tracking-widest">Đăng nhập</button>
+              </div>
+            </form>
           </div>
         ) : (
           <div className="max-w-3xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <button onClick={() => navigate('/student')} className="bg-white p-12 rounded-[40px] shadow-2xl shadow-slate-200/50 border border-white flex flex-col items-center space-y-4 hover:scale-[1.02] transition-all group">
-              <div className={`w-20 h-20 ${selectedGrade === 10 ? 'bg-emerald-50' : selectedGrade === 12 ? 'bg-rose-50' : 'bg-sky-50'} rounded-3xl flex items-center justify-center group-hover:bg-indigo-600 transition-colors`}>
-                  <GraduationCap size={36} className={`${selectedGrade === 10 ? 'text-emerald-600' : selectedGrade === 12 ? 'text-rose-600' : 'text-sky-600'} group-hover:text-white transition-colors`}/>
+              <div className={`w-20 h-20 bg-${themeColor}-50 rounded-3xl flex items-center justify-center group-hover:bg-${themeColor}-600 transition-colors`}>
+                  <GraduationCap size={36} className={`text-${themeColor}-600 group-hover:text-white transition-colors`}/>
               </div>
               <h2 className="text-2xl font-black text-slate-800 tracking-tight">HỌC SINH</h2>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Truy cập bài giảng & Quiz AI</p>
@@ -325,9 +511,12 @@ const LandingPage: React.FC<{ visitorCount: number, onSelectGrade: (g: number) =
                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Thiết lập học liệu & Quản lý</p>
               </button>
             ) : (
-              <form onSubmit={(e)=>{e.preventDefault(); if(pin===TEACHER_PWD) {localStorage.setItem('teacher_auth','true'); navigate('/teacher');} else setError(true);}} 
+              <form onSubmit={handleLoginSubmit} 
                 className="bg-white p-10 rounded-[40px] shadow-2xl border border-amber-100 flex flex-col items-center space-y-6 animate-in zoom-in-95">
-                <input type="password" autoFocus value={pin} onChange={(e)=>{setPin(e.target.value); setError(false);}} className={`w-full px-4 py-5 bg-slate-50 border-2 rounded-2xl text-center font-black text-3xl tracking-[0.5em] ${error?'border-red-400 animate-shake':'border-transparent focus:border-amber-400 outline-none'}`} placeholder="****" autoComplete="current-password"/>
+                <input type="password" autoFocus value={pin} onChange={(e)=>{setPin(e.target.value); setError(false);}} className={`w-full px-4 py-5 bg-slate-50 border-2 rounded-2xl text-center font-black text-2xl tracking-[0.5em] ${error?'border-red-400 animate-shake':'border-transparent focus:border-amber-400 outline-none'}`} placeholder="****" autoComplete="current-password"/>
+                <div className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider text-center">
+                  Nhập mã của giáo viên môn hoặc Super Admin
+                </div>
                 <div className="flex gap-4 w-full">
                   <button type="button" onClick={()=>setShowPass(false)} className="flex-1 font-bold text-slate-300 uppercase text-[10px] tracking-widest">Hủy bỏ</button>
                   <button type="submit" className="flex-1 px-4 py-4 bg-amber-500 text-white rounded-2xl font-bold uppercase text-[10px] shadow-lg shadow-amber-200 tracking-widest">Đăng nhập</button>
@@ -352,35 +541,33 @@ const MainView: React.FC<{
   fetchCloudData: (g: number) => void;
   student: Student | null;
   onLogout?: () => void;
-}> = ({ isAdmin, data, updateData, isSyncing, visitorCount, selectedGrade, syncError, fetchCloudData, student, onLogout }) => {
+  subjects: Subject[];
+}> = ({ isAdmin, data, updateData, isSyncing, visitorCount, selectedGrade, syncError, fetchCloudData, student, onLogout, subjects }) => {
   const [selectedId, setSelectedId] = useState<string | null>(() => {
-    try {
-      const saved = localStorage.getItem(`selected_id_${selectedGrade}`);
-      if (!saved || saved === 'null' || saved === 'undefined') return null;
-      return saved;
-    } catch (e) {
-      return null;
-    }
+    return localStorage.getItem(`selected_id_${selectedGrade}`);
   });
-  const [isVdcMode, setIsVdcMode] = useState<boolean>(false);
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
-  const [isMobileResourcesOpen, setIsMobileResourcesOpen] = useState<boolean>(false);
   const [iframeLoading, setIframeLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'content' | 'tasks' | 'flashcards' | 'homework'>('content');
   const [showStudentManager, setShowStudentManager] = useState(false);
-  const [isStudentSpaceOpen, setIsStudentSpaceOpen] = useState(false);
-  const [currentStudent, setCurrentStudent] = useState<Student | null>(student);
-
-  useEffect(() => {
-    setCurrentStudent(student);
-  }, [student]);
-
-  const [resourceModal, setResourceModal] = useState<ResourceLink | null>(null);
   const [sloganIdx, setSloganIdx] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [isQuizOpen, setIsQuizOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const navigate = useNavigate();
+
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type?: 'danger' | 'warning' | 'info';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'danger',
+    onConfirm: () => {}
+  });
 
   const selectedNode = useMemo(() => data?.nodes?.find(n => n.id === selectedId), [data?.nodes, selectedId]);
 
@@ -445,18 +632,18 @@ const MainView: React.FC<{
     });
   }, [currentTime]);
 
+  const currentSubject = useMemo(() => {
+    return subjects?.find(s => s.id === selectedGrade);
+  }, [subjects, selectedGrade]);
+
   const themeColor = useMemo(() => {
-    if (selectedGrade === 10) return 'emerald';
-    if (selectedGrade === 12) return 'rose';
-    return 'indigo';
-  }, [selectedGrade]);
+    return currentSubject?.theme || 'indigo';
+  }, [currentSubject]);
 
   const gradeTitle = useMemo(() => {
-    if (selectedGrade === 10) return 'VẬT LÝ 10';
-    if (selectedGrade === 11) return 'VẬT LÝ 11';
-    if (selectedGrade === 12) return 'VẬT LÝ 12';
-    return 'VẬT LÝ';
-  }, [selectedGrade]);
+    return currentSubject?.label || 'VẬT LÝ';
+  }, [currentSubject]);
+
   const childNodes = useMemo(() => {
     if (!selectedId || selectedNode?.type !== 'folder' || !data?.nodes) return [];
     return data.nodes.filter(n => n.parentId === selectedId).sort((a,b) => (a.order ?? 0) - (b.order ?? 0));
@@ -493,118 +680,19 @@ const MainView: React.FC<{
     return roots.filter(n => visibleNodeIds.has(n.id));
   }, [data?.nodes, visibleNodeIds]);
 
-  const isNotebookLMUrl = (url: string) => {
-    if (!url) return false;
-    const l = url.toLowerCase();
-    return l.includes('notebook.google.com') || l.includes('notebooklm.google.com') || l.includes('notebooklm');
-  };
-
-  const formatUrlForIframe = (url: string) => {
-    if (!url) return '';
-    let cleanUrl = url.trim();
-
-    if (cleanUrl.includes('drive.google.com') || cleanUrl.includes('docs.google.com')) {
-      if (cleanUrl.includes('/view') || cleanUrl.includes('/edit')) {
-        cleanUrl = cleanUrl.replace(/\/view.*$/, '/preview').replace(/\/edit.*$/, '/preview');
-      } else if (!cleanUrl.includes('/preview') && cleanUrl.includes('/file/d/')) {
-        cleanUrl = cleanUrl.replace(/(\/file\/d\/[^\/]+).*/, '$1/preview');
-      } else if (cleanUrl.includes('open?id=')) {
-        const fileId = cleanUrl.split('id=')[1]?.split('&')[0];
-        if (fileId) cleanUrl = `https://drive.google.com/file/d/${fileId}/preview`;
-      }
-    }
-
-    if (cleanUrl.includes('youtube.com/watch?v=')) {
-      const videoId = cleanUrl.split('v=')[1]?.split('&')[0];
-      if (videoId) cleanUrl = `https://www.youtube.com/embed/${videoId}`;
-    } else if (cleanUrl.includes('youtu.be/')) {
-      const videoId = cleanUrl.split('youtu.be/')[1]?.split('?')[0];
-      if (videoId) cleanUrl = `https://www.youtube.com/embed/${videoId}`;
-    }
-
-    return cleanUrl;
-  };
-
   useEffect(() => {
     const timer = setInterval(() => setSloganIdx(prev => (prev + 1) % SLOGANS.length), 30000);
     return () => clearInterval(timer);
   }, []);
 
   const [showNodeModal, setShowNodeModal] = useState(false);
-  const [showChapterReorderModal, setShowChapterReorderModal] = useState(false);
   const [nodeModalData, setNodeModalData] = useState<any>({parentId: null, type: 'lesson', title: '', url: '', imageUrl: '', order: 0});
 
   const [showResModal, setShowResModal] = useState(false);
   const [resModalData, setResModalData] = useState<{id?: string, title: string, url: string, isGlobal: boolean}>({title: '', url: '', isGlobal: false});
   const [isUploading, setIsUploading] = useState(false);
-  const [isUploadingDrive, setIsUploadingDrive] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-
-  const nodeDriveInputRef = useRef<HTMLInputElement>(null);
-  const nodeImageDriveInputRef = useRef<HTMLInputElement>(null);
-  const resourceDriveInputRef = useRef<HTMLInputElement>(null);
-
-  const triggerGoogleDriveUpload = async (inputRef: React.RefObject<HTMLInputElement>) => {
-    try {
-      if (!getDriveAccessToken()) {
-        setIsUploadingDrive(true);
-        await signInWithGoogleForDrive();
-        setIsUploadingDrive(false);
-      }
-      inputRef.current?.click();
-    } catch (err: any) {
-      setIsUploadingDrive(false);
-      showToast(err.message || 'Lỗi khi đăng nhập Google Drive.', 'error', 'Đăng nhập Google thất bại');
-    }
-  };
-
-  const [confirmState, setConfirmState] = useState<ConfirmState>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
-  const [toastState, setToastState] = useState<ToastState>({ isOpen: false, message: '' });
-
-  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info', title?: string) => {
-    setToastState({ isOpen: true, message, type, title });
-    setTimeout(() => {
-      setToastState(prev => ({ ...prev, isOpen: false }));
-    }, 5000);
-  };
-
-  const showConfirm = (title: string, message: string, onConfirm: () => void, type: 'danger' | 'warning' | 'info' = 'danger', confirmText?: string) => {
-    setConfirmState({
-      isOpen: true,
-      title,
-      message,
-      type,
-      confirmText,
-      onConfirm,
-    });
-  };
-
-  const handleGoogleDriveUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'node' | 'resource' | 'node_image') => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsUploadingDrive(true);
-    try {
-      const result = await uploadFileToGoogleDrive(file);
-      const driveUrl = result.previewUrl; // https://drive.google.com/file/d/FILE_ID/preview
-
-      if (target === 'node') {
-        setNodeModalData((prev: any) => ({ ...prev, url: driveUrl, title: prev.title || file.name.replace(/\.[^/.]+$/, '') }));
-      } else if (target === 'node_image') {
-        setNodeModalData((prev: any) => ({ ...prev, imageUrl: driveUrl }));
-      } else {
-        setResModalData((prev: any) => ({ ...prev, url: driveUrl, title: prev.title || file.name.replace(/\.[^/.]+$/, '') }));
-      }
-      showToast(`Đã tải file "${file.name}" lên Google Drive thành công!`, 'success', 'Tải lên Google Drive');
-    } catch (err: any) {
-      console.error("Google Drive Upload error:", err);
-      showToast(err.message || 'Lỗi khi tải lên Google Drive.', 'error', 'Tải lên thất bại');
-    } finally {
-      setIsUploadingDrive(false);
-      e.target.value = '';
-    }
-  };
 
   const exportData = async () => {
     setIsExporting(true);
@@ -614,21 +702,15 @@ const MainView: React.FC<{
       const { data: quizData } = await supabase.from('quiz_data').select('*');
       const { data: flashcards } = await supabase.from('flashcards').select('*');
       const { data: forumComments } = await supabase.from('forum_comments').select('*');
-      let vdcQuestions: any[] = [];
-      try {
-        const { data: vdc } = await supabase.from('vdc_questions').select('*');
-        if (vdc) vdcQuestions = vdc;
-      } catch (e) {}
       
       const backup = {
         timestamp: new Date().toISOString(),
-        version: '1.3',
+        version: '1.2',
         tables: {
           app_settings: appSettings,
           quiz_data: quizData,
           flashcards: flashcards,
-          forum_comments: forumComments,
-          vdc_questions: vdcQuestions
+          forum_comments: forumComments
         }
       };
 
@@ -636,12 +718,12 @@ const MainView: React.FC<{
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `VatLy11_FullBackup_${new Date().toLocaleDateString()}.json`;
+      const cleanSubjectLabel = currentSubject?.label ? currentSubject.label.replace(/[^a-zA-Z0-9]/g, '') : 'FullBackup';
+      a.download = `${cleanSubjectLabel}_Backup_${new Date().toLocaleDateString()}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      showToast("Đã xuất file dữ liệu thành công!", "success");
     } catch (error) {
-      showToast("Lỗi khi xuất dữ liệu: " + (error instanceof Error ? error.message : String(error)), "error");
+      alert("Lỗi khi xuất dữ liệu: " + (error instanceof Error ? error.message : String(error)));
     } finally {
       setIsExporting(false);
     }
@@ -650,11 +732,14 @@ const MainView: React.FC<{
   const importData = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const inputTarget = e.target;
 
-    showConfirm(
-      "Xác nhận Khôi phục Dữ liệu",
-      "Cảnh báo: Việc khôi phục sẽ ghi đè toàn bộ dữ liệu hiện tại trong CSDL. Bạn có chắc chắn muốn tiếp tục?",
-      async () => {
+    setConfirmConfig({
+      isOpen: true,
+      title: "Khôi phục dữ liệu",
+      message: "Cảnh báo: Việc khôi phục sẽ ghi đè toàn bộ dữ liệu hiện tại bằng dữ liệu trong file backup. Bạn có chắc chắn muốn tiếp tục?",
+      type: 'warning',
+      onConfirm: async () => {
         setIsImporting(true);
         try {
           const text = await file.text();
@@ -665,6 +750,7 @@ const MainView: React.FC<{
           // Restore app_settings
           if (backup.tables.app_settings) {
             for (const row of backup.tables.app_settings) {
+              // Map to handle potential id vs grade_id or data column differences
               const cleanRow = { id: row.id, data: row.data };
               await supabase.from('app_settings').upsert(cleanRow).select();
             }
@@ -681,6 +767,7 @@ const MainView: React.FC<{
           // Restore flashcards
           if (backup.tables.flashcards) {
             for (const row of backup.tables.flashcards) {
+              // Robust mapping for import
               const cleanRow: any = {
                 front: row.front,
                 back: row.back,
@@ -697,6 +784,7 @@ const MainView: React.FC<{
           // Restore forum_comments
           if (backup.tables.forum_comments) {
             for (const row of backup.tables.forum_comments) {
+              // Robust mapping for import
               const cleanRow: any = {
                 author: row.author,
                 content: row.content,
@@ -714,26 +802,16 @@ const MainView: React.FC<{
             }
           }
 
-          // Restore vdc_questions
-          if (backup.tables.vdc_questions && Array.isArray(backup.tables.vdc_questions)) {
-            for (const row of backup.tables.vdc_questions) {
-              try {
-                await supabase.from('vdc_questions').upsert(row).select();
-              } catch (vdcErr) {}
-            }
-          }
-
-          showToast("Khôi phục dữ liệu thành công! Hãy tải lại trang.", "success");
-          setTimeout(() => window.location.reload(), 1500);
+          alert("Khôi phục dữ liệu thành công! Hãy tải lại trang.");
+          window.location.reload();
         } catch (error) {
-          showToast("Lỗi khi khôi phục dữ liệu: " + (error instanceof Error ? error.message : String(error)), "error");
+          alert("Lỗi khi khôi phục dữ liệu: " + (error instanceof Error ? error.message : String(error)));
         } finally {
           setIsImporting(false);
+          inputTarget.value = '';
         }
-      },
-      "warning",
-      "Khôi phục ngay"
-    );
+      }
+    });
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'node' | 'resource' | 'node_image') => {
@@ -742,27 +820,12 @@ const MainView: React.FC<{
 
     // Limit 50MB
     if (file.size > 50 * 1024 * 1024) {
-      showToast("File quá lớn! Giới hạn 50MB.", "error");
+      alert("File quá lớn! Giới hạn 50MB.");
       return;
     }
 
     setIsUploading(true);
     try {
-      // Nếu là tải ảnh bài học, ưu tiên tải lên ImgBB trước
-      if (target === 'node_image') {
-        try {
-          const imgbb = await uploadToImgBB(file);
-          if (imgbb && imgbb.url) {
-            setNodeModalData({ ...nodeModalData, imageUrl: imgbb.url });
-            showToast("Đã tải ảnh lên ImgBB thành công!", "success");
-            setIsUploading(false);
-            return;
-          }
-        } catch (imgbbErr) {
-          console.warn("ImgBB upload failed, falling back to Supabase:", imgbbErr);
-        }
-      }
-
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
       const filePath = `uploads/${fileName}`;
@@ -788,10 +851,10 @@ const MainView: React.FC<{
         setResModalData({ ...resModalData, url: publicUrl });
       }
       
-      showToast("Tải file lên thành công!", "success");
+      alert("Tải file lên thành công!");
     } catch (error: any) {
       console.error("Upload process error:", error);
-      showToast(`Lỗi khi tải file: ${error.message || "Kiểm tra kết nối."}`, "error");
+      alert(`Lỗi khi tải file: ${error.message || "Vui lòng kiểm tra lại kết nối."}\n\nLưu ý: Bạn cần vào Supabase -> Storage -> Policies và thêm chính sách (Policy) cho phép 'INSERT' cho bucket 'resources'.`);
     } finally {
       setIsUploading(false);
     }
@@ -799,18 +862,24 @@ const MainView: React.FC<{
   
   const [showHomeConfig, setShowHomeConfig] = useState(false);
   const [tempHomeUrl, setTempHomeUrl] = useState(data.homeUrl || '');
+  const [tempApiKey, setTempApiKey] = useState('');
 
   useEffect(() => {
     if (showHomeConfig) {
       setTempHomeUrl(data.homeUrl || '');
+      setTempApiKey(localStorage.getItem(`gemini_api_key_grade_${selectedGrade}`) || '');
     }
-  }, [showHomeConfig, data.homeUrl]);
+  }, [showHomeConfig, selectedGrade, data.homeUrl]);
+
+  useEffect(() => { setActiveTab('content'); }, [selectedId]);
 
   const handleDeleteNode = (id: string) => {
-    showConfirm(
-      "Xác nhận xóa thư mục / bài học",
-      "Xóa thư mục/bài học này? Hệ thống sẽ xóa cả các mục con bên trong.",
-      () => {
+    setConfirmConfig({
+      isOpen: true,
+      title: "Xóa cấu trúc học liệu",
+      message: "Bạn có chắc muốn xóa thư mục/bài học này? Toàn bộ các tài liệu học, bài học bên trong và học liệu tương ứng cũng sẽ bị xóa.",
+      type: 'danger',
+      onConfirm: () => {
         const getChildIds = (parentId: string): string[] => {
           const children = (data?.nodes || []).filter(n => n.parentId === parentId);
           return [parentId, ...children.flatMap(c => getChildIds(c.id))];
@@ -819,46 +888,27 @@ const MainView: React.FC<{
         const newData = {...data, nodes: (data?.nodes || []).filter(n => !idsToDelete.includes(n.id))};
         updateData(newData);
         if(selectedId && idsToDelete.includes(selectedId)) setSelectedId(null);
-        showToast("Đã xóa mục bài học thành công", "success");
-      },
-      "danger",
-      "Xóa vĩnh viễn"
-    );
+      }
+    });
   };
 
   const handleReorderNode = (id: string, direction: 'up' | 'down') => {
     const node = data?.nodes?.find(n => n.id === id);
     if (!node) return;
-
-    const isRoot = node.parentId === null || node.parentId === undefined;
-    const siblings = (data?.nodes || [])
-      .filter(n => isRoot ? (n.parentId === null || n.parentId === undefined) : n.parentId === node.parentId)
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
-    const currentIndex = siblings.findIndex(n => n.id === id);
+    const siblings = (data?.nodes || []).filter(n => n.parentId === node.parentId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const normalizedSiblings = siblings.map((s, idx) => ({ ...s, order: idx }));
+    const currentIndex = normalizedSiblings.findIndex(n => n.id === id);
     const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    if (targetIndex < 0 || targetIndex >= siblings.length) return;
-
-    const targetNode = siblings[targetIndex];
-    // Reorder in a new array
-    const reorderedSiblings = [...siblings];
-    reorderedSiblings[currentIndex] = targetNode;
-    reorderedSiblings[targetIndex] = node;
-
-    const orderMap = new Map<string, number>();
-    reorderedSiblings.forEach((s, idx) => {
-      orderMap.set(s.id, idx);
-    });
-
+    if (targetIndex < 0 || targetIndex >= normalizedSiblings.length) return;
+    const targetNode = normalizedSiblings[targetIndex];
     const newNodes = (data?.nodes || []).map(n => {
-      if (orderMap.has(n.id)) {
-        return { ...n, order: orderMap.get(n.id)! };
-      }
-      return n;
+      const normalizedMatch = normalizedSiblings.find(s => s.id === n.id);
+      let updatedNode = normalizedMatch ? { ...n, order: normalizedMatch.order } : n;
+      if (updatedNode.id === id) return { ...updatedNode, order: targetNode.order };
+      if (updatedNode.id === targetNode.id) return { ...updatedNode, order: currentIndex };
+      return updatedNode;
     });
-
     updateData({ ...data, nodes: newNodes });
-    showToast(`Đã chuyển ${node.type === 'folder' ? 'chương' : 'bài'} "${node.title}" ${direction === 'up' ? 'lên' : 'xuống'}!`, "success");
   };
 
   const handleMoveNode = (id: string, direction: 'in' | 'out') => {
@@ -921,32 +971,32 @@ const MainView: React.FC<{
   };
 
   const handleDeleteResource = (id: string, title: string, isGlobal: boolean) => {
-    showConfirm(
-      "Xác nhận xóa học liệu",
-      `Bạn có chắc chắn muốn xóa học liệu: "${title}"?`,
-      () => {
+    setConfirmConfig({
+      isOpen: true,
+      title: "Xóa học liệu",
+      message: `Bạn có chắc chắn muốn xóa học liệu: "${title}"? Thao tác này không thể hoàn tác.`,
+      type: 'danger',
+      onConfirm: () => {
         const newData = {...data};
         if(isGlobal) newData.globalResources = (data?.globalResources || []).filter(r => r.id !== id);
         else newData.nodes = (data?.nodes || []).map(n => n.id === selectedId ? {...n, lessonResources: (n.lessonResources || []).filter(r => r.id !== id)} : n);
         updateData(newData);
-        showToast("Đã xóa học liệu thành công", "success");
-      },
-      "danger",
-      "Xóa học liệu"
-    );
+      }
+    });
   };
 
   const handleSaveHomeConfig = () => {
     updateData({...data, homeUrl: tempHomeUrl});
+    if (tempApiKey.trim()) {
+      localStorage.setItem(`gemini_api_key_grade_${selectedGrade}`, tempApiKey.trim());
+    } else {
+      localStorage.removeItem(`gemini_api_key_grade_${selectedGrade}`);
+    }
     setShowHomeConfig(false);
-    showToast("Đã lưu cấu hình cài đặt thành công!", "success");
   };
 
-  const handleSelectNode = (id: string | null, tab: 'content' | 'flashcards' | 'tasks' | 'homework' = 'content') => {
-    setIsVdcMode(false);
+  const handleSelectNode = (id: string | null) => {
     setSelectedId(id);
-    setActiveTab(tab);
-    setIsMobileSidebarOpen(false);
     if (id) {
       localStorage.setItem(`selected_id_${selectedGrade}`, id);
       if (data.nodes.find(n => n.id === id)?.url) setIframeLoading(true);
@@ -955,94 +1005,81 @@ const MainView: React.FC<{
     }
   };
 
+  const activeLayout = currentSubject?.layout || 'layout1';
+
   return (
-    <div className="flex h-screen h-[100dvh] w-full overflow-hidden font-sans bg-white text-slate-900 transition-colors duration-300 relative">
-      {isQuizOpen && selectedNode && (
-        <QuizModal 
-          nodeId={selectedId!}
-          lessonTitle={selectedNode.title} 
-          lessonUrl={selectedNode.url}
-          isAdmin={isAdmin}
-          selectedGrade={selectedGrade}
+    <div className="flex flex-col h-screen overflow-hidden font-sans bg-white text-slate-900 transition-colors duration-300">
+      {/* If layout2 or layout3, render Top Horizontal Navbar */}
+      {activeLayout !== 'layout1' && (
+        <TopHorizontalNavbar
+          nodes={data.nodes}
+          selectedId={selectedId}
           themeColor={themeColor}
+          isAdmin={isAdmin}
           student={student}
-          onClose={() => setIsQuizOpen(false)} 
-        />
-      )}
-      
-      {/* MOBILE BACKDROP FOR SIDEBAR */}
-      {isMobileSidebarOpen && (
-        <div 
-          onClick={() => setIsMobileSidebarOpen(false)} 
-          className="md:hidden fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-40 animate-in fade-in duration-200" 
+          currentSubject={currentSubject}
+          visitorCount={visitorCount}
+          onSelectNode={handleSelectNode}
+          onShowSettings={() => setShowHomeConfig(true)}
+          onAddNode={(p, t) => {
+            const nextOrder = (data?.nodes || []).filter(n => n.parentId === p).length;
+            setNodeModalData({parentId: p, type: t, title: '', url: '', imageUrl: '', order: nextOrder});
+            setShowNodeModal(true);
+          }}
+          onEditNode={(n) => {
+            setNodeModalData({...n});
+            setShowNodeModal(true);
+          }}
+          onDeleteNode={handleDeleteNode}
+          onLogout={() => {
+            if (isAdmin) localStorage.removeItem('teacher_auth');
+            if (onLogout) onLogout();
+            navigate('/');
+          }}
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
         />
       )}
 
-      {/* PANEL 1: SIDEBAR */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] bg-[#fbfcfd] border-r border-slate-100 flex flex-col shrink-0 shadow-2xl transition-transform duration-300 md:relative md:w-[230px] md:translate-x-0 md:shadow-none md:z-auto ${
-        isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
-      }`}>
-        <header className={`px-4 sm:px-5 py-3.5 sm:py-4 text-white ${isAdmin ? 'bg-amber-600' : `bg-${themeColor}-600`} flex justify-between items-center shrink-0`}>
-          <div className="flex items-center gap-2 min-w-0">
-            <Book size={16} className="shrink-0"/>
+      <div className="flex flex-1 overflow-hidden w-full h-full relative z-0">
+        {isQuizOpen && selectedNode && (
+          <QuizModal 
+            nodeId={selectedId!}
+            lessonTitle={selectedNode.title} 
+            lessonUrl={selectedNode.url}
+            isAdmin={isAdmin}
+            selectedGrade={selectedGrade}
+            themeColor={themeColor}
+            student={student}
+            subjectName={currentSubject?.label}
+            onClose={() => setIsQuizOpen(false)} 
+          />
+        )}
+        
+        {/* PANEL 1: SIDEBAR */}
+        {activeLayout === 'layout1' && (
+          <aside className="w-[230px] border-r border-slate-100 flex flex-col shrink-0 bg-[#fbfcfd] transition-all">
+        <header className={`px-5 py-4 text-white ${isAdmin ? 'bg-amber-600' : `bg-${themeColor}-600`} flex justify-between items-center shrink-0`}>
+          <div className="flex items-center gap-2">
+            <Book size={16}/>
             <h1 className="font-bold text-[9px] uppercase tracking-[0.2em] truncate">
-              Cấu trúc sách - Lớp {selectedGrade === 1 ? '11' : selectedGrade}
+              {currentSubject?.label || 'TÀI LIỆU'}
             </h1>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-1">
             {isAdmin && <button onClick={()=>setShowHomeConfig(true)} className="p-1.5 hover:bg-white/20 rounded-lg transition-colors" title="Cấu hình trang chủ"><Settings size={14}/></button>}
-            {isAdmin && (
-              <button 
-                onClick={() => setShowChapterReorderModal(true)} 
-                className="p-1.5 hover:bg-white/20 rounded-lg transition-colors flex items-center gap-1" 
-                title="Sắp xếp thứ tự các chương"
-              >
-                <ListOrdered size={14}/>
-              </button>
-            )}
             {isAdmin && <button onClick={()=>{
-              const nextOrder = (data?.nodes || []).filter(n => n.parentId === null || n.parentId === undefined).length;
+              const nextOrder = (data?.nodes || []).filter(n => n.parentId === null).length;
               setNodeModalData({parentId:null, type:'folder', title:'', url:'', imageUrl: '', order: nextOrder}); 
               setShowNodeModal(true);
-            }} className="p-1.5 hover:bg-white/20 rounded-lg transition-colors" title="Thêm chương mới"><Plus size={14}/></button>}
-            <button
-              onClick={() => setIsMobileSidebarOpen(false)}
-              className="md:hidden p-1.5 hover:bg-white/20 rounded-lg text-white ml-0.5"
-              title="Đóng menu sách"
-            >
-              <X size={15} />
-            </button>
+            }} className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"><Plus size={14}/></button>}
           </div>
         </header>
 
-        <div className="p-3 shrink-0 bg-[#fbfcfd] space-y-2">
-          {/* NÚT KHO VDC & CÂU HỎI HAY */}
-          <button
-            onClick={() => {
-              setIsVdcMode(true);
-              setSelectedId(null);
-              setIsMobileSidebarOpen(false);
-            }}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl transition-all text-left group shadow-xs ${
-              isVdcMode
-                ? 'bg-gradient-to-r from-rose-600 via-amber-600 to-indigo-600 text-white shadow-md shadow-rose-200 ring-2 ring-rose-400'
-                : 'bg-gradient-to-r from-amber-50 to-rose-50/80 hover:from-amber-100 hover:to-rose-100 text-slate-800 border border-amber-200/80'
-            }`}
-          >
-            <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider">
-              <Sparkles size={13} className={isVdcMode ? "text-amber-300 fill-amber-300 animate-pulse" : "text-rose-500 fill-rose-500"} />
-              <span>Kho VDC & Sưu tầm</span>
-            </span>
-            <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-tight ${
-              isVdcMode ? 'bg-white/20 text-white' : 'bg-rose-500 text-white'
-            }`}>
-              9+
-            </span>
-          </button>
-
+        <div className="p-3 shrink-0 bg-[#fbfcfd]">
           <div className={`flex items-center bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm focus-within:border-${themeColor}-400 transition-all`}>
             <Search size={12} className="text-slate-400"/>
-            <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Tìm kiếm bài..." className="bg-transparent border-none outline-none text-[10px] font-medium w-full ml-2"/>
+            <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Tìm kiếm..." className="bg-transparent border-none outline-none text-[10px] font-medium w-full ml-2"/>
           </div>
         </div>
 
@@ -1072,70 +1109,38 @@ const MainView: React.FC<{
                   <LogOut size={9}/> Thoát
                 </button>
              </div>
-             {currentStudent && (
-               <button 
-                 onClick={() => setIsStudentSpaceOpen(true)}
-                 className="w-full flex items-center gap-2 p-2 bg-indigo-50/70 hover:bg-indigo-100/90 rounded-xl border border-indigo-100 transition-all text-left group"
-                 title="Nhấn để mở Góc học tập cá nhân & Đổi mật khẩu"
-               >
-                  <div className="w-6 h-6 bg-indigo-600 group-hover:bg-indigo-700 rounded-full flex items-center justify-center text-white text-[8px] font-black shadow-sm shrink-0 transition-colors">
-                    {currentStudent.name.charAt(0).toUpperCase()}
+             {student && (
+               <div className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100">
+                  <div className="w-6 h-6 bg-indigo-600 rounded-full flex items-center justify-center text-white text-[8px] font-black">
+                    {student.name.charAt(0).toUpperCase()}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[9px] font-black text-slate-800 truncate uppercase tracking-tight group-hover:text-indigo-700">{currentStudent.full_name || currentStudent.name}</p>
-                    <p className="text-[7px] font-bold text-indigo-500 uppercase tracking-widest flex items-center gap-1">
-                      {currentStudent.is_guest ? 'Khách' : 'Góc học tập cá nhân'}
-                    </p>
+                  <div className="min-w-0">
+                    <p className="text-[9px] font-black text-slate-700 truncate uppercase tracking-tighter">{student.full_name || student.name}</p>
+                    <p className="text-[7px] font-bold text-slate-400 uppercase tracking-widest">{student.is_guest ? 'Khách' : 'Học sinh'}</p>
                   </div>
-                  <ChevronRight size={12} className="text-indigo-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
-               </button>
+               </div>
              )}
         </footer>
       </aside>
+      )}
+
+      {/* PANEL 3: RESOURCES (Leftmost side in Layout 2) */}
+      {activeLayout === 'layout2' && (
+        <ResourcesPanel 
+          isAdmin={isAdmin} 
+          selectedId={selectedId} 
+          lessonResources={selectedNode?.lessonResources||[]} 
+          globalResources={data.globalResources}
+          themeColor={themeColor}
+          className="border-r border-slate-100 animate-in slide-in-from-left duration-300"
+          onAdd={(isG)=> {setResModalData({title:'', url:'', isGlobal: isG}); setShowResModal(true);}}
+          onEdit={(r,isG)=> {setResModalData({...r, isGlobal: isG}); setShowResModal(true);}}
+          onDelete={handleDeleteResource}
+        />
+      )}
 
       {/* PANEL 2: MAIN CONTENT */}
-      <main className="flex-1 w-full min-w-0 flex flex-col overflow-hidden relative bg-white transition-all">
-        {/* MOBILE TOP NAVIGATION BAR (md:hidden) */}
-        <div className="md:hidden flex items-center justify-between px-3 py-2 bg-white border-b border-slate-200 shrink-0 z-20 shadow-xs">
-          <div className="flex items-center gap-2 min-w-0">
-            <button
-              onClick={() => setIsMobileSidebarOpen(true)}
-              className={`p-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 active:scale-95 transition-all shadow-xs`}
-              title="Mở menu sách"
-            >
-              <Menu size={16} className={`text-${themeColor}-600`} />
-              <span className="text-[10px] font-black uppercase tracking-wider">Menu</span>
-            </button>
-            <div className="min-w-0">
-              <h2 className="text-xs font-black text-slate-900 truncate uppercase tracking-tight">
-                {isVdcMode ? "Kho VDC & Sưu tầm" : (selectedNode?.title || gradeTitle)}
-              </h2>
-              <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest truncate">
-                Lớp {selectedGrade === 1 ? '11' : selectedGrade} {isAdmin ? '• Giáo viên' : (student ? `• ${student.full_name || student.name}` : '')}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 shrink-0">
-            {!isVdcMode && (
-              <button
-                onClick={() => setIsMobileResourcesOpen(true)}
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[10px] font-bold border transition-all ${
-                  (selectedNode?.lessonResources?.length || 0) + (data.globalResources?.length || 0) > 0
-                    ? `bg-${themeColor}-50 border-${themeColor}-200 text-${themeColor}-700`
-                    : 'bg-slate-50 border-slate-200 text-slate-600'
-                }`}
-                title="Mở bảng học liệu"
-              >
-                <Paperclip size={13} />
-                <span className="font-extrabold hidden sm:inline">Học liệu</span>
-                <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-white font-black shadow-xs">
-                  {(selectedNode?.lessonResources?.length || 0) + (data.globalResources?.length || 0)}
-                </span>
-              </button>
-            )}
-          </div>
-        </div>
+      <main className="flex-1 flex flex-col overflow-hidden relative bg-white transition-all">
         {syncError && (
           <div className="bg-red-50 border-b border-red-100 px-6 py-3 flex items-center justify-between animate-in slide-in-from-top duration-500">
             <div className="flex items-center gap-3">
@@ -1155,17 +1160,7 @@ const MainView: React.FC<{
             </button>
           </div>
         )}
-        {isVdcMode ? (
-          <VdcQuestionsPanel
-            isAdmin={isAdmin}
-            selectedGrade={selectedGrade}
-            nodes={data?.nodes || []}
-            themeColor={themeColor}
-            onBackToLessons={() => setIsVdcMode(false)}
-            showToast={showToast}
-            showConfirm={showConfirm}
-          />
-        ) : selectedId ? (
+        {selectedId ? (
           <>
             {selectedNode?.type === 'folder' ? (
               <FolderSummary 
@@ -1176,40 +1171,30 @@ const MainView: React.FC<{
               />
             ) : (
               <>
-                <header className={`px-4 sm:px-6 ${activeTab === 'content' ? 'pt-3 pb-0 sm:pt-4 sm:pb-0' : 'py-3 sm:py-4'} border-b border-slate-100 shrink-0 bg-white`}>
-                  <div className="flex flex-wrap sm:flex-nowrap justify-between items-center gap-2">
-                    <div className="min-w-0 flex-1 mr-2 sm:mr-4">
-                      <h2 className="text-base sm:text-lg font-black text-slate-900 uppercase tracking-tight truncate mb-0.5">{selectedNode?.title}</h2>
-                      <p key={sloganIdx} className="text-[9px] font-medium text-slate-400 uppercase tracking-widest opacity-80 italic animate-in slide-in-from-left-4 duration-1000 truncate">
+                <header className={`px-6 ${activeTab === 'content' ? 'pt-4 pb-0' : 'py-4'} border-b border-slate-100 shrink-0 bg-white`}>
+                  <div className="flex justify-between items-center">
+                    <div className="min-w-0 flex-1 mr-4">
+                      <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight truncate mb-0.5">{selectedNode?.title}</h2>
+                      <p key={sloganIdx} className="text-[9px] font-medium text-slate-400 uppercase tracking-widest opacity-80 italic animate-in slide-in-from-left-4 duration-1000">
                         {SLOGANS[sloganIdx]}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2">
                       <div className="flex gap-2">
                         {isAdmin ? (
                             <button 
                               onClick={()=>setIsQuizOpen(true)} 
-                              className="group flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-1.5 sm:py-2 bg-indigo-600 text-white font-bold text-[9px] sm:text-[10px] uppercase shadow-lg shadow-indigo-100 rounded-full hover:bg-indigo-700 hover:scale-105 transition-all"
+                              className="group flex items-center gap-2 px-5 py-2 bg-indigo-600 text-white font-bold text-[10px] uppercase shadow-lg shadow-indigo-100 rounded-full hover:bg-indigo-700 hover:scale-105 transition-all"
                             >
-                            <Zap size={13} className="fill-current text-amber-300"/> Soạn Quiz AI
+                            <Zap size={14} className="fill-current text-amber-300"/> Soạn Quiz AI
                           </button>
                         ) : (
-                          <>
-                            {currentStudent && (
-                              <button 
-                                onClick={()=>setIsStudentSpaceOpen(true)} 
-                                className="group flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold text-[9px] sm:text-[10px] uppercase shadow-lg shadow-indigo-100 rounded-full hover:scale-105 transition-all"
-                              >
-                                <GraduationCap size={13} className="text-amber-300"/> <span className="hidden sm:inline">Góc học tập</span>
-                              </button>
-                            )}
                             <button 
                               onClick={()=>setIsQuizOpen(true)} 
-                              className={`group flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-5 py-1.5 sm:py-2 bg-${themeColor}-600 text-white font-bold text-[9px] sm:text-[10px] uppercase shadow-lg shadow-${themeColor}-100 rounded-full hover:bg-${themeColor}-700 hover:scale-105 transition-all`}
+                              className={`group flex items-center gap-2 px-5 py-2 bg-${themeColor}-600 text-white font-bold text-[10px] uppercase shadow-lg shadow-${themeColor}-100 rounded-full hover:bg-${themeColor}-700 hover:scale-105 transition-all`}
                             >
-                              <BrainCircuit size={13}/> Rèn luyện
-                            </button>
-                          </>
+                            <BrainCircuit size={14}/> Rèn luyện
+                          </button>
                         )}
                       </div>
                       {selectedNode?.url && <button onClick={()=>window.open(selectedNode.url, '_blank')} className={`p-2 bg-slate-50 text-slate-400 hover:text-${themeColor}-600 rounded-full hover:bg-${themeColor}-50 transition-colors`}><Maximize2 size={16}/></button>}
@@ -1217,35 +1202,27 @@ const MainView: React.FC<{
                   </div>
                   
                   <div className={`flex justify-between items-center ${activeTab === 'content' ? 'mt-2' : 'mt-3'}`}>
-                    <div className="flex gap-4 sm:gap-6 overflow-x-auto no-scrollbar py-0.5">
-                      <button onClick={()=>setActiveTab('content')} className={`pb-2 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all shrink-0 ${activeTab==='content' ? `border-${themeColor}-600 text-${themeColor}-600` : 'border-transparent text-slate-300 hover:text-slate-500'}`}>Học liệu</button>
-                      <button onClick={()=>setActiveTab('flashcards')} className={`pb-2 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all shrink-0 ${activeTab==='flashcards' ? `border-${themeColor}-600 text-${themeColor}-600` : 'border-transparent text-slate-300 hover:text-slate-500'}`}>Flashcards</button>
+                    <div className="flex gap-6">
+                      <button onClick={()=>setActiveTab('content')} className={`pb-2 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all ${activeTab==='content' ? `border-${themeColor}-600 text-${themeColor}-600` : 'border-transparent text-slate-300 hover:text-slate-500'}`}>Học liệu</button>
+                      <button onClick={()=>setActiveTab('flashcards')} className={`pb-2 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all ${activeTab==='flashcards' ? `border-${themeColor}-600 text-${themeColor}-600` : 'border-transparent text-slate-300 hover:text-slate-500'}`}>Flashcards</button>
                       {(isAdmin || student) && (
-                        <button onClick={()=>setActiveTab('tasks')} className={`pb-2 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all shrink-0 ${activeTab==='tasks' ? `border-${themeColor}-600 text-${themeColor}-600` : 'border-transparent text-slate-300 hover:text-slate-500'}`}>Nhiệm vụ</button>
+                        <button onClick={()=>setActiveTab('tasks')} className={`pb-2 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all ${activeTab==='tasks' ? `border-${themeColor}-600 text-${themeColor}-600` : 'border-transparent text-slate-300 hover:text-slate-500'}`}>Nhiệm vụ</button>
                       )}
                       {(isAdmin || student) && (
-                        <button onClick={()=>setActiveTab('homework')} className={`pb-2 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all shrink-0 ${activeTab==='homework' ? `border-${themeColor}-600 text-${themeColor}-600` : 'border-transparent text-slate-300 hover:text-slate-500'}`}>Bài tập về nhà</button>
+                        <button onClick={()=>setActiveTab('homework')} className={`pb-2 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all ${activeTab==='homework' ? `border-${themeColor}-600 text-${themeColor}-600` : 'border-transparent text-slate-300 hover:text-slate-500'}`}>Bài tập về nhà</button>
                       )}
                     </div>
-                    <div className="hidden sm:block pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest opacity-60 shrink-0">
+                    <div className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest opacity-60">
                       {formattedTime}
                     </div>
                   </div>
                 </header>
                 
-                <div className={`flex-1 relative overflow-y-auto custom-scrollbar bg-[#fcfdfe] ${activeTab === 'content' ? 'p-0' : 'p-3 sm:p-6'}`}>
+                <div className={`flex-1 relative overflow-y-auto custom-scrollbar bg-[#fcfdfe] ${activeTab === 'content' ? 'p-0' : 'p-6'}`}>
                   {activeTab === 'content' ? (
                     <div className="h-full relative">
-                      {selectedNode?.url ? (
-                        <MediaViewer
-                          url={selectedNode.url}
-                          title={selectedNode.title}
-                          themeColor={themeColor}
-                          className="w-full h-full"
-                        />
-                      ) : (
-                        <div className="h-full flex items-center justify-center italic text-slate-200 text-xl font-light tracking-widest">Nội dung chưa cập nhật...</div>
-                      )}
+                      {iframeLoading && <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-white/90 backdrop-blur-sm"><Loader2 className={`animate-spin text-${themeColor}-500 mb-2`} size={32}/><p className="text-[10px] uppercase font-bold text-slate-300 tracking-widest">Đang tải...</p></div>}
+                      {selectedNode?.url ? <iframe src={selectedNode.url} title={selectedNode.title} className={`w-full h-full border-none transition-opacity duration-500 ${iframeLoading ? 'opacity-0' : 'opacity-100'}`} onLoad={()=>setIframeLoading(false)}/> : <div className="h-full flex items-center justify-center italic text-slate-200 text-xl font-light tracking-widest">Nội dung chưa cập nhật...</div>}
                     </div>
                   ) : activeTab === 'flashcards' ? (
                     <FlashcardsPanel nodeId={selectedId!} isAdmin={isAdmin} themeColor={themeColor} gradeId={selectedGrade} />
@@ -1287,57 +1264,21 @@ const MainView: React.FC<{
         )}
       </main>
 
-      {/* PANEL 3: RESOURCES (DESKTOP lg+) */}
-      {!isVdcMode && (
+      {/* PANEL 3: RESOURCES (Right side in Layout 1 & 3) */}
+      {(activeLayout === 'layout1' || activeLayout === 'layout3') && (
         <ResourcesPanel 
           isAdmin={isAdmin} 
           selectedId={selectedId} 
           lessonResources={selectedNode?.lessonResources||[]} 
           globalResources={data.globalResources}
           themeColor={themeColor}
-          className="hidden lg:flex w-56 border-l border-slate-50 bg-[#fbfcfd] flex-col shrink-0 overflow-y-auto custom-scrollbar transition-all"
+          className="border-l border-slate-100 animate-in slide-in-from-right duration-300"
           onAdd={(isG)=> {setResModalData({title:'', url:'', isGlobal: isG}); setShowResModal(true);}}
           onEdit={(r,isG)=> {setResModalData({...r, isGlobal: isG}); setShowResModal(true);}}
           onDelete={handleDeleteResource}
-          onViewResource={(r)=> setResourceModal(r)}
         />
       )}
-
-      {/* MOBILE DRAWER: RESOURCES (< lg) */}
-      {isMobileResourcesOpen && !isVdcMode && (
-        <div className="lg:hidden fixed inset-0 z-50 flex justify-end">
-          <div 
-            onClick={() => setIsMobileResourcesOpen(false)} 
-            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200" 
-          />
-          <div className="relative z-10 w-72 sm:w-80 max-w-[85vw] h-full bg-white shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
-            <ResourcesPanel 
-              isAdmin={isAdmin} 
-              selectedId={selectedId} 
-              lessonResources={selectedNode?.lessonResources||[]} 
-              globalResources={data.globalResources}
-              themeColor={themeColor}
-              className="w-full h-full flex flex-col overflow-y-auto custom-scrollbar bg-white"
-              onClose={() => setIsMobileResourcesOpen(false)}
-              onAdd={(isG)=> {setResModalData({title:'', url:'', isGlobal: isG}); setShowResModal(true);}}
-              onEdit={(r,isG)=> {setResModalData({...r, isGlobal: isG}); setShowResModal(true);}}
-              onDelete={handleDeleteResource}
-              onViewResource={(r)=> setResourceModal(r)}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* MODAL VIEW RESOURCE */}
-      {resourceModal && (
-        <MediaViewerModal
-          url={resourceModal.url}
-          title={resourceModal.title}
-          themeColor={themeColor}
-          onClose={() => setResourceModal(null)}
-        />
-      )}
-
+    </div>
 
       {/* MODAL SETTINGS & DATA */}
       {showHomeConfig && (
@@ -1363,6 +1304,19 @@ const MainView: React.FC<{
                 <div className="space-y-1">
                   <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest">Link trang chủ (URL)</label>
                   <input value={tempHomeUrl} onChange={e=>setTempHomeUrl(e.target.value)} className="w-full px-4 py-3 text-sm font-medium outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-amber-400 transition-all" placeholder="https://..."/>
+                </div>
+
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pt-2 border-t border-slate-100 mt-2">Cấu hình Quiz AI</h4>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest">Gemini API Key riêng</label>
+                  <input 
+                    type="password" 
+                    value={tempApiKey} 
+                    onChange={e=>setTempApiKey(e.target.value)} 
+                    className="w-full px-4 py-3 text-sm font-medium outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-amber-400 transition-all font-mono" 
+                    placeholder="Nhập API Key riêng cho môn này..."
+                  />
+                  <p className="text-[8px] text-slate-400 px-1 leading-normal">Cấu hình API Key riêng của giáo viên phụ trách môn học này để soạn bài độc lập.</p>
                 </div>
               </div>
 
@@ -1425,60 +1379,30 @@ const MainView: React.FC<{
             className="bg-white p-8 rounded-[32px] shadow-2xl w-full max-w-md space-y-4 border border-slate-100 animate-in zoom-in-95">
             <h3 className={`font-black text-center text-${themeColor}-600 uppercase text-[11px] tracking-widest mb-2`}>Cấu trúc bài học</h3>
             <div className="flex gap-2 p-1 bg-slate-100 rounded-xl mb-4">
-              <button type="button" onClick={()=>setNodeModalData({...nodeModalData, type:'folder'})} className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-[10px] font-black uppercase transition-all ${nodeModalData.type==='folder' ? 'bg-white shadow-xs text-amber-600 ring-1 ring-amber-200' : 'text-slate-400 hover:text-slate-600'}`}>
-                <Folder size={14}/> Thư mục / Chương (Hiện trên VDC)
+              <button type="button" onClick={()=>setNodeModalData({...nodeModalData, type:'folder'})} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${nodeModalData.type==='folder' ? 'bg-white shadow-sm text-amber-600' : 'text-slate-400'}`}>
+                <Folder size={14}/> Thư mục
               </button>
-              <button type="button" onClick={()=>setNodeModalData({...nodeModalData, type:'lesson'})} className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-1 rounded-lg text-[10px] font-black uppercase transition-all ${nodeModalData.type==='lesson' ? 'bg-white shadow-xs text-sky-600 ring-1 ring-sky-200' : 'text-slate-400 hover:text-slate-600'}`}>
+              <button type="button" onClick={()=>setNodeModalData({...nodeModalData, type:'lesson'})} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${nodeModalData.type==='lesson' ? 'bg-white shadow-sm text-sky-600' : 'text-slate-400'}`}>
                 <Globe size={14}/> Bài học
               </button>
             </div>
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest">Tiêu đề</label>
-              <input autoFocus value={nodeModalData.title} onChange={e=>setNodeModalData({...nodeModalData, title:e.target.value})} className={`w-full px-4 py-3 text-sm font-medium outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-${themeColor}-400 transition-all`} placeholder={nodeModalData.type==='folder'?'Tên chương / thư mục (sẽ hiện trên menu sách & kho VDC)...':'Tên bài học...'}/>
+              <input autoFocus value={nodeModalData.title} onChange={e=>setNodeModalData({...nodeModalData, title:e.target.value})} className={`w-full px-4 py-3 text-sm font-medium outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-${themeColor}-400 transition-all`} placeholder={nodeModalData.type==='folder'?'Tên thư mục...':'Tên bài học...'}/>
             </div>
             {nodeModalData.type === 'lesson' && (
               <>
                 <div className="space-y-1">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest flex justify-between items-center flex-wrap gap-2">
-                    <span>Link tài liệu (Iframe)</span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => triggerGoogleDriveUpload(nodeDriveInputRef)}
-                        disabled={isUploadingDrive}
-                        className="cursor-pointer text-emerald-600 hover:text-emerald-800 flex items-center gap-1 font-black bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100 transition-all"
-                      >
-                        <Cloud size={11}/> {isUploadingDrive ? 'Đang lên Drive...' : 'Tải lên Google Drive'}
-                      </button>
-                      <input ref={nodeDriveInputRef} type="file" className="hidden" onChange={(e) => handleGoogleDriveUpload(e, 'node')} disabled={isUploadingDrive}/>
-                      <label className="cursor-pointer text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100 transition-all">
-                        <Upload size={11}/> {isUploading ? 'Đang tải...' : 'File máy'}
-                        <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, 'node')} disabled={isUploading}/>
-                      </label>
-                    </div>
+                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest flex justify-between items-center">
+                    <span>Link tài liệu (Nhúng / Iframe)</span>
                   </label>
-                  <input value={nodeModalData.url} onChange={e=>setNodeModalData({...nodeModalData, url:e.target.value})} className={`w-full px-4 py-3 text-[11px] outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-${themeColor}-400 transition-all`} placeholder="https://drive.google.com/file/d/.../preview hoặc link tài liệu..."/>
+                  <input value={nodeModalData.url} onChange={e=>setNodeModalData({...nodeModalData, url:e.target.value})} className={`w-full px-4 py-3 text-[11px] outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-${themeColor}-400 transition-all`} placeholder="https://drive.google.com/... hoặc link tài liệu khác"/>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest flex justify-between items-center flex-wrap gap-2">
-                    <span className="flex items-center gap-1"><ImageIcon size={10}/> Link hình ảnh bài học</span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => triggerGoogleDriveUpload(nodeImageDriveInputRef)}
-                        disabled={isUploadingDrive}
-                        className="cursor-pointer text-emerald-600 hover:text-emerald-800 flex items-center gap-1 font-black bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100 transition-all"
-                      >
-                        <Cloud size={11}/> {isUploadingDrive ? 'Đang lên Drive...' : 'Up Google Drive'}
-                      </button>
-                      <input ref={nodeImageDriveInputRef} type="file" className="hidden" onChange={(e) => handleGoogleDriveUpload(e, 'node_image')} disabled={isUploadingDrive} accept="image/*"/>
-                      <label className="cursor-pointer text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100 transition-all">
-                        <Upload size={11}/> {isUploading ? 'Đang tải...' : 'File máy'}
-                        <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, 'node_image')} disabled={isUploading} accept="image/*"/>
-                      </label>
-                    </div>
+                  <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest flex justify-between items-center">
+                    <span className="flex items-center gap-1"><ImageIcon size={10}/> Link hình ảnh minh họa bài học</span>
                   </label>
-                  <input value={nodeModalData.imageUrl || ''} onChange={e=>setNodeModalData({...nodeModalData, imageUrl:e.target.value})} className={`w-full px-4 py-3 text-[11px] outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-${themeColor}-400 transition-all`} placeholder="https://anh-minh-hoa.png"/>
+                  <input value={nodeModalData.imageUrl || ''} onChange={e=>setNodeModalData({...nodeModalData, imageUrl:e.target.value})} className={`w-full px-4 py-3 text-[11px] outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-${themeColor}-400 transition-all`} placeholder="Dán link ảnh từ Github, Imgur... (ví dụ: https://...)"/>
                 </div>
               </>
             )}
@@ -1500,25 +1424,10 @@ const MainView: React.FC<{
               <input autoFocus value={resModalData.title} onChange={e=>setResModalData({...resModalData, title:e.target.value})} className={`w-full px-4 py-3 text-sm font-medium outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-${themeColor}-400 transition-all`} placeholder="Ví dụ: Video thí nghiệm..."/>
             </div>
             <div className="space-y-1">
-              <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest flex justify-between items-center flex-wrap gap-2">
+              <label className="text-[9px] font-bold text-slate-400 uppercase ml-1 tracking-widest flex justify-between items-center">
                 <span>Đường dẫn (URL)</span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => triggerGoogleDriveUpload(resourceDriveInputRef)}
-                    disabled={isUploadingDrive}
-                    className="cursor-pointer text-emerald-600 hover:text-emerald-800 flex items-center gap-1 font-black bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100 transition-all"
-                  >
-                    <Cloud size={11}/> {isUploadingDrive ? 'Đang lên Drive...' : 'Tải lên Google Drive'}
-                  </button>
-                  <input ref={resourceDriveInputRef} type="file" className="hidden" onChange={(e) => handleGoogleDriveUpload(e, 'resource')} disabled={isUploadingDrive}/>
-                  <label className="cursor-pointer text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100 transition-all">
-                    <Upload size={11}/> {isUploading ? 'Đang tải...' : 'File máy'}
-                    <input type="file" className="hidden" onChange={(e) => handleFileUpload(e, 'resource')} disabled={isUploading}/>
-                  </label>
-                </div>
               </label>
-              <input value={resModalData.url} onChange={e=>setResModalData({...resModalData, url:e.target.value})} className={`w-full px-4 py-3 text-[11px] outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-${themeColor}-400 transition-all`} placeholder="https://drive.google.com/file/d/.../preview"/>
+              <input value={resModalData.url} onChange={e=>setResModalData({...resModalData, url:e.target.value})} className={`w-full px-4 py-3 text-[11px] outline-none bg-slate-50 border border-slate-100 rounded-xl focus:border-${themeColor}-400 transition-all`} placeholder="Dán link tài liệu từ Google Drive, Youtube..."/>
             </div>
             <div className="flex gap-4 pt-2">
                 <button type="button" onClick={()=>setShowResModal(false)} className="flex-1 py-3 text-[10px] font-bold uppercase text-slate-300 tracking-widest">Hủy</button>
@@ -1528,35 +1437,18 @@ const MainView: React.FC<{
         </div>
       )}
 
-      {currentStudent && (
-        <StudentSpaceModal
-          isOpen={isStudentSpaceOpen}
-          onClose={() => setIsStudentSpaceOpen(false)}
-          student={currentStudent}
-          data={data}
-          themeColor={themeColor}
-          selectedGrade={selectedGrade}
-          onSelectLessonAndTab={(lessonId, tab) => {
-            setSelectedId(lessonId);
-            setActiveTab(tab);
-          }}
-          onStudentUpdated={(updated) => {
-            setCurrentStudent(updated);
-          }}
-        />
-      )}
-
-      <ChapterReorderModal
-        isOpen={showChapterReorderModal}
-        onClose={() => setShowChapterReorderModal(false)}
-        nodes={data?.nodes || []}
-        onReorderChapter={handleReorderNode}
-        themeColor={themeColor}
-        selectedGrade={selectedGrade}
+      {/* Custom Confirmation Modal */}
+      <ConfirmModal
+        isOpen={confirmConfig.isOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        type={confirmConfig.type}
+        onConfirm={() => {
+          confirmConfig.onConfirm();
+          setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+        }}
+        onCancel={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
       />
-
-      <ConfirmModal state={confirmState} onClose={() => setConfirmState(prev => ({ ...prev, isOpen: false }))} />
-      <ToastNotification state={toastState} onClose={() => setToastState(prev => ({ ...prev, isOpen: false }))} />
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
