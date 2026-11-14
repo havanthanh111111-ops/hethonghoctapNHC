@@ -16,6 +16,7 @@ export interface ForumComment {
   createdAt: string;
   isAdmin: boolean;
   isApproved?: boolean;
+  isPublic?: boolean;
 }
 
 export interface BookNode {
@@ -61,6 +62,12 @@ export interface StudyLog {
   created_at: string;
 }
 
+export interface HomeworkMeta {
+  targetType?: 'all' | 'students';
+  targetStudentIds?: string[];
+  targetStudentCodes?: string[];
+}
+
 export interface LessonTask {
   id: string;
   nodeId: string;
@@ -69,6 +76,13 @@ export interface LessonTask {
   minFlashcardTime: number; // minutes
   minQuizTime: number; // minutes
   createdAt: string;
+  requireHomework?: boolean;
+  startDate?: string;
+  endDate?: string;
+  targetType?: 'all' | 'students';
+  targetClasses?: string[];
+  targetStudentIds?: string[];
+  isDraft?: boolean;
 }
 
 export interface QuizQuestion {
@@ -76,6 +90,27 @@ export interface QuizQuestion {
   options: string[];
   correctIndex: number;
   explanation: string;
+}
+
+export interface VdcQuestion {
+  id: string;
+  grade_id: number;
+  chapter_id?: string;
+  chapter_title: string;
+  title?: string;
+  content: string;
+  image_url?: string;
+  question_type: 'multiple_choice' | 'essay';
+  options?: string[];
+  correct_answer?: string;
+  solution?: string;
+  solution_image_url?: string;
+  level: 'vdc' | 'hay_suutam' | 'de_thi_thu' | 'phuong_phap_la';
+  source?: string;
+  tags?: string[];
+  order_num?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Subject {
